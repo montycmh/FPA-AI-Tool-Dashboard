@@ -286,8 +286,6 @@ const DEFAULTS = [
 ];
 
 // ── Storage ──────────────────────────────────────────────────
-const SK = 'fpa_tools_v4';
-
 function loadTools(){
   try {
     const stored = JSON.parse(localStorage.getItem(SK));
@@ -595,13 +593,115 @@ function deleteTool(){
   downloadHTML();
 }
 
+// ── Gist config ──────────────────────────────────────────────
+const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
+const GIST_FILE = 'fpa_tools.json';
+const TOKEN_KEY = 'fpa_gh_token';
+const SK        = 'fpa_tools_v4';
+
+function getToken(){ return localStorage.getItem(TOKEN_KEY)||''; }
+function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
+
+// ── Gist read/write ───────────────────────────────────────────
+async function gistRead(){
+  const token = getToken();
+  if(!token) return null;
+  try {
+    const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers:{ Authorization:`token ${token}`, Accept:'application/vnd.github.v3+json' }
+    });
+    if(!r.ok) return null;
+    const data = await r.json();
+    const content = data.files[GIST_FILE]?.content;
+    if(!content) return null;
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed) && parsed.length ? parsed : null;
+  } catch(e){ return null; }
+}
+
+async function gistWrite(tools){
+  const token = getToken();
+  if(!token) return;
+  try {
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method:'PATCH',
+      headers:{ Authorization:`token ${token}`, Accept:'application/vnd.github.v3+json', 'Content-Type':'application/json' },
+      body: JSON.stringify({ files:{ [GIST_FILE]:{ content: JSON.stringify(tools, null, 2) } } })
+    });
+  } catch(e){ console.error('Gist write error', e); }
+}
+
+// ── Storage (Gist + localStorage fallback) ───────────────────
+function loadTools(){
+  try {
+    const stored = JSON.parse(localStorage.getItem(SK));
+    if(stored && stored.length) return stored;
+  } catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function saveTools(t){
+  localStorage.setItem(SK, JSON.stringify(t));
+  gistWrite(t); // async, fire and forget
+}
+
+// ── Token prompt UI ──────────────────────────────────────────
+function showTokenPrompt(){
+  const overlay = document.createElement('div');
+  overlay.id = 'token-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(30,39,97,.6);z-index:400;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border:.5px solid #D3D1C7;border-radius:18px;padding:24px;width:440px;max-width:94vw;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:9px;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:18px;color:#185FA5;flex-shrink:0;"><i class="ti ti-lock"></i></div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:#1E2761;">FP&A AI Tools</div>
+          <div style="font-size:12px;color:#888780;">Enter your GitHub token to access the board</div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#5F5E5A;line-height:1.55;background:#F4F7FB;border-radius:10px;padding:10px 14px;border:.5px solid #D3D1C7;">
+        This board is protected. You need a GitHub Personal Access Token with <strong style="color:#2C2C2A;">gist</strong> scope to load and save tools.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <label style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#888780;">GitHub Token</label>
+        <input id="token-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+          style="background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;color:#2C2C2A;font-family:inherit;font-size:13px;padding:8px 11px;outline:none;width:100%;">
+        <span style="font-size:11px;color:#888780;">Saved in your browser only — never shared.</span>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="submitToken()" style="padding:8px 20px;border-radius:8px;background:#1E2761;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Access board</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('token-input').addEventListener('keydown', e=>{ if(e.key==='Enter') submitToken(); });
+}
+
+async function submitToken(){
+  const val = document.getElementById('token-input').value.trim();
+  if(!val){ alert('Please enter a token.'); return; }
+  setToken(val);
+
+  // Try to load from Gist
+  const btn = document.querySelector('#token-overlay button');
+  btn.textContent = 'Loading...'; btn.disabled = true;
+
+  const gistData = await gistRead();
+  if(gistData){
+    saveTools(gistData);
+  } else {
+    // Token may be wrong or Gist empty — seed with defaults
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+  }
+
+  document.getElementById('token-overlay').remove();
+  renderSidebar();
+}
+
 // ── Download ─────────────────────────────────────────────────
 function downloadHTML(){
   const tools = loadTools();
   let html = document.documentElement.outerHTML;
-  // Bake current tools so they load on any machine
-  const injection = `const SK = 'fpa_tools_v4'; (function(){ try{ localStorage.setItem(SK, ${JSON.stringify(JSON.stringify(tools))}); }catch(e){} })();`;
-  html = html.replace("const SK = 'fpa_tools_v4';", injection);
+  const injection = `const GIST_ID = '${GIST_ID}'; const GIST_FILE = '${GIST_FILE}'; const TOKEN_KEY = '${TOKEN_KEY}'; const SK = '${SK}';`;
+  html = html.replace(`const GIST_ID   = '${GIST_ID}';`, injection.replace(`const GIST_ID = '`,`const GIST_ID   = '`));
   const blob = new Blob([html],{type:'text/html'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -611,9 +711,23 @@ function downloadHTML(){
 }
 
 // ── Init ─────────────────────────────────────────────────────
-// If no stored tools yet, seed with defaults
-if(!localStorage.getItem(SK)) saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
-renderSidebar();
+async function init(){
+  const token = getToken();
+  if(!token){
+    showTokenPrompt();
+    return;
+  }
+  // Token exists — try Gist first
+  const gistData = await gistRead();
+  if(gistData){
+    saveTools(gistData);
+  } else if(!localStorage.getItem(SK)){
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+  }
+  renderSidebar();
+}
+
+init();
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 </script>
 </body>
