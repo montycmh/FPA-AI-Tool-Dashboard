@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FP&A AI Tools · Komodo Health</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F7FB;color:#2C2C2A;display:flex;height:100vh;overflow:hidden;}
+
+/* ── Sidebar ── */
+aside{width:240px;position:fixed;left:0;top:0;bottom:0;background:#1E2761;color:#e2e8f0;padding:20px 12px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+.side-logo{display:flex;align-items:center;gap:10px;padding:4px 10px 18px;}
+.side-logo-icon{width:32px;height:32px;border-radius:8px;background:rgba(159,225,203,.15);border:1px solid rgba(159,225,203,.25);display:flex;align-items:center;justify-content:center;font-size:16px;color:#9FE1CB;flex-shrink:0;}
+.side-logo-text{font-size:13px;font-weight:700;letter-spacing:.04em;color:#fff;line-height:1.2;}
+.side-logo-sub{font-size:11px;color:#9FE1CB;margin-top:1px;}
+.nav-section{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#CADCFC;opacity:.6;padding:14px 10px 5px;}
+.nav-divider{height:1px;background:rgba(255,255,255,.1);margin:8px 10px;}
+.nav-item{display:flex;align-items:center;gap:9px;border:none;background:transparent;color:#CADCFC;padding:9px 10px;border-radius:10px;font-size:13px;cursor:pointer;text-align:left;text-decoration:none;width:100%;transition:background .12s,color .12s;}
+.nav-item i{font-size:16px;min-width:17px;flex-shrink:0;}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff;}
+.nav-item.active{background:rgba(159,225,203,.15);color:#9FE1CB;}
+.nav-label{flex:1;}
+.nav-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:20px;letter-spacing:.03em;flex-shrink:0;}
+.nb-claude{background:rgba(83,74,183,.35);color:#c4bff8;border:1px solid rgba(83,74,183,.4);}
+.nb-glean{background:rgba(29,158,117,.25);color:#9FE1CB;border:1px solid rgba(29,158,117,.3);}
+.nb-custom{background:rgba(133,79,11,.3);color:#fcd19b;border:1px solid rgba(133,79,11,.35);}
+.download-btn{display:flex;align-items:center;gap:9px;border:none;background:#1D9E75;color:#fff;padding:9px 10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;width:100%;transition:background .15s;margin-bottom:6px;}
+.download-btn:hover{background:#0F6E56;}
+.download-btn i{font-size:16px;}
+.add-btn{display:flex;align-items:center;gap:9px;border:none;background:rgba(255,255,255,.08);color:#e2e8f0;padding:9px 10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;width:100%;transition:background .15s;}
+.add-btn:hover{background:rgba(255,255,255,.15);}
+.add-btn i{font-size:16px;}
+.sidebar-footer{padding:14px 10px 4px;border-top:1px solid rgba(255,255,255,.1);color:#CADCFC;opacity:.55;font-size:11px;line-height:1.6;}
+
+/* ── Main ── */
+.main{margin-left:240px;width:calc(100% - 240px);height:100vh;overflow-y:auto;padding:28px 30px 48px;}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:65vh;gap:12px;color:#888780;font-size:14px;}
+.empty-state i{font-size:42px;opacity:.25;}
+
+/* ── Tool panel ── */
+.tool-panel{display:none;flex-direction:column;gap:18px;}
+.tool-panel.active{display:flex;}
+
+/* ── Panel header ── */
+.panel-header{background:#1E2761;border-radius:14px;padding:1.5rem 1.8rem 1.35rem;position:relative;}
+.panel-tag{font-size:11px;font-weight:600;letter-spacing:.08em;color:#9FE1CB;text-transform:uppercase;margin-bottom:.4rem;}
+.panel-title{font-size:24px;font-weight:600;color:#fff;line-height:1.2;margin-bottom:.3rem;}
+.panel-sub{font-size:13px;color:#CADCFC;line-height:1.5;}
+.panel-meta{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:.9rem;}
+.panel-meta span{font-size:12px;color:#9FE1CB;display:flex;align-items:center;gap:5px;}
+.panel-edit-btn{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#CADCFC;font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .12s;}
+.panel-edit-btn:hover{background:rgba(255,255,255,.18);color:#fff;}
+.panel-edit-btn i{font-size:13px;}
+
+/* ── Section label ── */
+.section-label{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#888780;border-bottom:.5px solid #D3D1C7;padding-bottom:.5rem;margin-bottom:.9rem;}
+
+/* ── Cards ── */
+.card{background:#fff;border:.5px solid #D3D1C7;border-radius:14px;padding:1.1rem 1.2rem;}
+.cards-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.cards-2 .card{margin:0;}
+.card-stack{display:flex;flex-direction:column;gap:14px;}
+
+/* ── Open buttons ── */
+.open-group{display:flex;flex-direction:column;gap:7px;}
+.open-btn{display:flex;align-items:center;gap:10px;padding:9px 13px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:10px;font-size:13px;font-weight:600;color:#2C2C2A;text-decoration:none;transition:border-color .12s,background .12s,color .12s;}
+.open-btn:hover{border-color:#1D9E75;background:#E1F5EE;color:#0F6E56;}
+.open-btn i.lead{font-size:16px;color:#5F5E5A;flex-shrink:0;}
+.open-btn:hover i.lead{color:#0F6E56;}
+.open-btn .arrow{margin-left:auto;font-size:13px;color:#B4B2A9;}
+.open-btn:hover .arrow{color:#1D9E75;}
+
+/* ── Dept tiles ── */
+.dept-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.dept-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px 11px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:10px;text-decoration:none;transition:border-color .12s,background .12s;}
+.dept-tile:hover{border-color:#1D9E75;background:#E1F5EE;}
+.dept-tile i{font-size:13px;color:#B4B2A9;margin-bottom:2px;}
+.dept-tile:hover i{color:#1D9E75;}
+.dept-tile .dt-num{font-size:13px;font-weight:700;color:#1E2761;}
+.dept-tile .dt-name{font-size:11px;color:#5F5E5A;line-height:1.3;}
+.dept-tile:hover .dt-num,.dept-tile:hover .dt-name{color:#0F6E56;}
+
+/* ── Chips ── */
+.chips{display:flex;flex-wrap:wrap;gap:7px;}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;font-size:12px;color:#5F5E5A;}
+.chip i{font-size:13px;color:#888780;}
+
+/* ── Steps ── */
+.steps{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;}
+.steps li{display:flex;gap:11px;align-items:flex-start;font-size:13px;color:#5F5E5A;line-height:1.6;}
+.step-n{min-width:22px;height:22px;border-radius:50%;background:#E6F1FB;border:.5px solid #B5D4F4;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#185FA5;flex-shrink:0;margin-top:2px;}
+
+/* ── Bullets ── */
+.bullets{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;}
+.bullets li{font-size:13px;color:#5F5E5A;line-height:1.55;display:flex;gap:9px;align-items:flex-start;}
+.bullets li::before{content:'';width:5px;height:5px;border-radius:50%;background:#1D9E75;flex-shrink:0;margin-top:7px;}
+
+/* ── Note / dont boxes ── */
+.note-box{background:#F4F7FB;border:.5px solid #D3D1C7;border-left:3px solid #534AB7;border-radius:0 10px 10px 0;padding:11px 14px;}
+.dont-item{display:flex;gap:10px;align-items:flex-start;padding:.85rem 1rem;background:#FCEBEB;border:.5px solid #F7C1C1;border-radius:10px;}
+.dont-icon{flex-shrink:0;font-size:16px;color:#A32D2D;margin-top:1px;}
+.dont-text{font-size:13px;color:#501313;line-height:1.55;}
+.dont-text strong{font-weight:600;color:#A32D2D;}
+
+code{font-family:"SF Mono","Fira Code",monospace;font-size:11px;background:#F1EFE8;border:.5px solid #D3D1C7;padding:1px 5px;border-radius:4px;color:#534AB7;}
+strong.hl{font-weight:600;color:#2C2C2A;}
+.hint{font-size:11px;color:#888780;margin-top:5px;}
+
+/* ── Modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(30,39,97,.5);z-index:300;align-items:center;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal{background:#fff;border:.5px solid #D3D1C7;border-radius:18px;padding:22px;width:540px;max-width:94vw;display:flex;flex-direction:column;gap:13px;position:relative;max-height:92vh;overflow-y:auto;}
+.modal h3{font-size:16px;font-weight:700;color:#1E2761;margin:0;}
+.modal-x{position:absolute;top:14px;right:14px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;color:#888780;font-size:15px;padding:4px 7px;cursor:pointer;line-height:1;}
+.modal-x:hover{background:#F1EFE8;color:#2C2C2A;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#888780;}
+.field input,.field select,.field textarea{background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;color:#2C2C2A;font-family:inherit;font-size:13px;padding:8px 11px;outline:none;width:100%;transition:border-color .12s;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#1D9E75;background:#fff;}
+.field textarea{resize:vertical;min-height:100px;line-height:1.5;}
+.field-hint{font-size:11px;color:#888780;}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:2px;}
+.btn-cancel{padding:8px 15px;border-radius:8px;background:#F4F7FB;border:.5px solid #D3D1C7;color:#5F5E5A;font-size:13px;cursor:pointer;font-weight:600;}
+.btn-cancel:hover{background:#F1EFE8;}
+.btn-save{padding:8px 18px;border-radius:8px;background:#1E2761;border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;}
+.btn-save:hover{background:#263480;}
+.btn-delete{padding:8px 13px;border-radius:8px;background:#fff;border:.5px solid #F7C1C1;color:#A32D2D;font-size:13px;cursor:pointer;font-weight:600;margin-right:auto;display:flex;align-items:center;gap:6px;}
+.btn-delete:hover{background:#FCEBEB;}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="side-logo">
+    <div class="side-logo-icon"><i class="ti ti-chart-dots"></i></div>
+    <div>
+      <div class="side-logo-text">FP&A AI Tools</div>
+      <div class="side-logo-sub">Komodo Health</div>
+    </div>
+  </div>
+  <div id="sidebar-nav"></div>
+  <div style="flex:1;min-height:12px;"></div>
+  <button class="download-btn" onclick="downloadHTML()"><i class="ti ti-download"></i>Download HTML</button>
+  <button class="add-btn" onclick="openModal(null)"><i class="ti ti-plus"></i>Add tool</button>
+  <div class="sidebar-footer">Made by Monty</div>
+</aside>
+
+<div class="main" id="main">
+  <div class="empty-state" id="empty-state">
+    <i class="ti ti-arrow-left"></i>
+    <span>Select a tool from the sidebar</span>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modal-bg" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <button class="modal-x" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    <h3 id="modal-title">Add tool</h3>
+    <div class="field">
+      <label>Tool name</label>
+      <input type="text" id="f-name" placeholder="e.g. HC Actuals Dashboard">
+    </div>
+    <div class="field">
+      <label>Platform</label>
+      <select id="f-platform">
+        <option value="claude">Claude</option>
+        <option value="glean">Glean</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <input type="text" id="f-desc" placeholder="Short description shown under the title">
+    </div>
+    <div class="field">
+      <label>Link</label>
+      <input type="url" id="f-link" placeholder="https://...">
+    </div>
+    <div class="field">
+      <label>Button label</label>
+      <input type="text" id="f-btn-label" placeholder="e.g. Open · Claude Project">
+    </div>
+    <div class="field">
+      <label>Instructions</label>
+      <textarea id="f-instructions" placeholder="One item per line. Each line becomes a numbered step."></textarea>
+      <span class="field-hint">One item per line → numbered steps in the panel.</span>
+    </div>
+    <div class="field">
+      <label>Notes / rules (optional)</label>
+      <textarea id="f-notes" placeholder="One item per line. Shown as a highlighted note box." style="min-height:70px;"></textarea>
+      <span class="field-hint">One item per line → bullet list in a note box.</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-delete" id="btn-delete" style="display:none" onclick="deleteTool()"><i class="ti ti-trash"></i>Delete</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveTool()">Save tool</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Default tools ────────────────────────────────────────────
+const DEFAULTS = [
+  {
+    id:'aghr', builtin:true, platform:'claude', section:'Claude Projects',
+    name:'Active Global Headcount Report',
+    tag:'Claude Project · Workforce Planning',
+    tagIcon:'ti-users',
+    desc:'Automates the generation of Komodo Health\'s monthly AGHR as a self-contained interactive HTML file.',
+    meta:['Workday extract','Monthly cadence','HTML output'],
+    metaIcons:['ti-file-spreadsheet','ti-refresh','ti-code'],
+    link:'https://claude.ai/project/019f1a43-55eb-7198-9d5c-122328a3efa7',
+    btnLabel:'AGHR · Claude Project',
+    instructions:'Upload the monthly Workday extract to this project.\nClaude runs generate_aghr.py against it.\nClaude delivers the HTML report and an updated copy of the script.\nReplace the script in this project with the new file so the next month runs without manual edits.',
+    notes:'Only workers hired before the first day of the report month are included.\nFTE = Worker Type "Employee" AND subtype "Regular". Non-Regular → reclassified as Contingent.\nEffective date = month prior to filename (e.g. AGHRJul26.xlsx → Jun-26).',
+    extras:{
+      chips:['AGHRMmmYY.xlsx — Workday extract'],
+      outputChips:['HTML report','generate_aghr.py'],
+      contains:['FTE, Contingent & Costa Rica summary tables with MoM movement from Feb-25 to present.','FTE and Contingent detail tabs — full roster with filters, search, and pagination.','Pigment HC Load tab — aggregated by Cost Center, Worker Type, Country; CSV export.']
+    }
+  },
+  {
+    id:'araging', builtin:true, platform:'claude', section:'Claude Projects',
+    name:'A/R Aging Report',
+    tag:'Claude Project · Finance',
+    tagIcon:'ti-clock-dollar',
+    desc:'Converts raw NetSuite A/R aging exports into a clean, interactive dashboard for the monthly close review.',
+    meta:['Two NetSuite exports','Monthly close','HTML output'],
+    metaIcons:['ti-file-spreadsheet','ti-refresh','ti-code'],
+    link:'https://claude.ai/project/019f1ffa-0928-7204-b480-4a30e2035c1b',
+    btnLabel:'A/R Aging · Claude Project',
+    instructions:'Reads both files and determines current vs. prior from the filename date.\nCleans the data — redistributes credits from negative balance buckets against older overdue amounts.\nIdentifies the top 15 customers by total balance.\nCompares current vs. prior month to show variances.\nFlags customers where negative values appear in aging buckets.',
+    notes:'',
+    extras:{
+      chips:['Current month-end export','Prior month-end export'],
+      chipsHint:'Pattern: JAZAR-ACO-MMDDYYYY.xlsx',
+      outputChips:['Self-contained HTML report'],
+      contains:['Summary table of all A/R aging buckets (current, 0–30, 31–60, 61–90, 90+ days).','Side-by-side comparison with variance columns in red / green.','Warnings section for data inconsistencies.','Editable cells + Lock/Unlock button for sharing.']
+    }
+  },
+  {
+    id:'pizarra', builtin:true, platform:'glean', section:'Glean',
+    name:'BvA Dashboard',
+    tag:'Glean · FP&A',
+    tagIcon:'ti-layout-dashboard',
+    desc:'Builds a Budget vs Actual dashboard from 4 Excel files. One HTML output per business unit per month.',
+    meta:['4 Excel files per run','Monthly cadence','5 business units'],
+    metaIcons:['ti-file-spreadsheet','ti-refresh','ti-building'],
+    link:'',
+    btnLabel:'',
+    instructions:'Upload the 4 files for the current run.\nThe chat reads and checks the data.\nThe chat builds the BvA Board in HTML.\nReview it and ask for updates in the same chat.',
+    notes:'Always use the files provided for that run.\nDo not reuse old files unless provided again.\nThe same chat can be reused if new 4 files are shared.',
+    extras:{
+      depts:[
+        {num:'5200',name:'FP&A',link:'https://app.glean.com/chat/78723211055847bf9033486f724bbc9c'},
+        {num:'5100',name:'Accounting',link:'https://app.glean.com/chat/9f9a589d0537487398b1eb233804054d'},
+        {num:'9300',name:'Information Technology',link:'https://app.glean.com/chat/ea09cd5a90a447099885d9dd0fcb1478'},
+        {num:'6000',name:'People',link:'https://app.glean.com/chat/e1eebd988b3c4bc3815dfa6395f3cc6d'},
+        {num:'9000',name:'Facilities',link:'https://app.glean.com/chat/b856991bc92d4e8d89fc5e875853ff99'}
+      ],
+      chips:['Quarter','Year','HC','T&E'],
+      outputChips:['One final HTML BvA Dashboard']
+    }
+  },
+  {
+    id:'opex', builtin:true, platform:'glean', section:'Glean',
+    name:'OPEX Review Board',
+    tag:'Glean · Month-End Close',
+    tagIcon:'ti-table',
+    desc:'Reads OPEX and GL files to build an HTML review board that flags new entries, reclass candidates, and missing actuals.',
+    meta:['OPEX Input + GL Summary','Flags new · review · missing','HTML output'],
+    metaIcons:['ti-file-spreadsheet','ti-flag','ti-code'],
+    link:'https://app.glean.com/chat/29c998a7a78b43a88eb21ed47afe3560',
+    btnLabel:'OPEX Review Board · Glean',
+    instructions:'Load the files — reads the OPEX file and the GL file.\nReview the latest month — checks the latest actual month vs. prior months.\nFlag important items — marks rows as new, review, or missing.\nCheck vendor history — suggests a Department and GL when possible.\nCreate the board — builds an HTML board in English.',
+    notes:'Comp and Benefits is always excluded.',
+    extras:{
+      chips:['OPEX Input file','GL Transaction Summary'],
+      outputChips:['opex_review_board.html'],
+      canDo:['Review the flagged rows.','Apply reclass suggestions.','Export reclass and missing accrual items.']
+    }
+  }
+];
+
+// ── Storage ──────────────────────────────────────────────────
+const SK = 'fpa_tools_v4';
+
+function loadTools(){
+  try {
+    const stored = JSON.parse(localStorage.getItem(SK));
+    if(stored && stored.length) return stored;
+  } catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function saveTools(t){ localStorage.setItem(SK, JSON.stringify(t)); }
+
+// ── Helpers ──────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function platformNavBadge(p){
+  if(p==='claude') return '<span class="nav-badge nb-claude">Claude</span>';
+  if(p==='glean')  return '<span class="nav-badge nb-glean">Glean</span>';
+  return '<span class="nav-badge nb-custom">Custom</span>';
+}
+function platformIcon(p){ return p==='claude'?'ti-brand-claude':'ti-external-link'; }
+
+function stepsHTML(text){
+  const lines = text.split('\n').filter(l=>l.trim());
+  return lines.map((l,i)=>`<li><span class="step-n">${i+1}</span><span>${esc(l.trim())}</span></li>`).join('');
+}
+function bulletsHTML(text){
+  const lines = text.split('\n').filter(l=>l.trim());
+  return lines.map(l=>`<li>${esc(l.trim())}</li>`).join('');
+}
+function chipsHTML(arr){
+  return arr.map(c=>`<div class="chip"><i class="ti ti-file-spreadsheet"></i>${esc(c)}</div>`).join('');
+}
+function outputChipsHTML(arr){
+  return arr.map(c=>`<div class="chip"><i class="ti ti-code"></i>${esc(c)}</div>`).join('');
+}
+
+// ── Render sidebar ───────────────────────────────────────────
+function renderSidebar(){
+  const tools = loadTools();
+  const nav = document.getElementById('sidebar-nav');
+
+  // Group by section
+  const sections = {};
+  tools.forEach(t => {
+    const sec = t.section || 'Custom';
+    if(!sections[sec]) sections[sec] = [];
+    sections[sec].push(t);
+  });
+
+  let html = '';
+  const sectionOrder = ['Claude Projects','Glean','Custom'];
+  const allSections = [...new Set([...sectionOrder, ...Object.keys(sections)])];
+
+  allSections.forEach((sec,si) => {
+    if(!sections[sec]) return;
+    if(si>0) html += '<div class="nav-divider"></div>';
+    html += `<div class="nav-section">${esc(sec)}</div>`;
+    sections[sec].forEach(t => {
+      html += `<button class="nav-item" id="nav-${esc(t.id)}" onclick="showTool('${esc(t.id)}',this)">
+        <i class="ti ${t.tagIcon||'ti-tool'}"></i>
+        <span class="nav-label">${esc(t.name)}</span>
+        ${platformNavBadge(t.platform)}
+      </button>`;
+    });
+  });
+  nav.innerHTML = html;
+}
+
+// ── Render panel ─────────────────────────────────────────────
+function renderPanel(t){
+  const ex = t.extras || {};
+  let html = `<div class="tool-panel active" id="panel-${esc(t.id)}">`;
+
+  // Header
+  html += `<div class="panel-header">
+    <button class="panel-edit-btn" onclick="openModal('${esc(t.id)}')"><i class="ti ti-pencil"></i>Edit</button>
+    <div class="panel-tag"><i class="ti ${t.tagIcon||'ti-tool'}"></i> &nbsp;${esc(t.tag||t.platform)}</div>
+    <div class="panel-title">${esc(t.name)}</div>
+    <div class="panel-sub">${esc(t.desc||'')}</div>`;
+  if(t.meta && t.meta.length){
+    html += `<div class="panel-meta">`;
+    t.meta.forEach((m,i) => {
+      html += `<span><i class="ti ${(t.metaIcons||[])[i]||'ti-info-circle'}"></i> ${esc(m)}</span>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // BvA dept tiles (special case)
+  if(ex.depts && ex.depts.length){
+    html += `<div class="card">
+      <div class="section-label">Open BvA chat in Glean — select your business unit</div>
+      <div class="dept-grid">`;
+    ex.depts.forEach(d => {
+      html += `<a class="dept-tile" href="${esc(d.link)}" target="_blank">
+        <i class="ti ti-external-link"></i>
+        <span class="dt-num">${esc(d.num)}</span>
+        <span class="dt-name">${esc(d.name)}</span>
+      </a>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Row 1: Open + Files
+  const hasLink = t.link && t.link.trim();
+  const hasChips = ex.chips && ex.chips.length;
+  if(hasLink || hasChips){
+    html += `<div class="cards-2">`;
+    if(hasLink){
+      html += `<div class="card">
+        <div class="section-label">Open</div>
+        <div class="open-group">
+          <a class="open-btn" href="${esc(t.link)}" target="_blank">
+            <i class="ti ${platformIcon(t.platform)} lead"></i>${esc(t.btnLabel||t.name)}<i class="ti ti-arrow-up-right arrow"></i>
+          </a>
+        </div>
+      </div>`;
+    }
+    if(hasChips){
+      html += `<div class="card">
+        <div class="section-label">Files required</div>
+        <div class="chips">${chipsHTML(ex.chips)}</div>`;
+      if(ex.chipsHint) html += `<p class="hint" style="margin-top:8px;">Pattern: <code>${esc(ex.chipsHint)}</code></p>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Row 2: Steps + right column
+  const hasSteps = t.instructions && t.instructions.trim();
+  const hasContains = ex.contains && ex.contains.length;
+  const hasCanDo = ex.canDo && ex.canDo.length;
+  const hasOutput = ex.outputChips && ex.outputChips.length;
+  const hasNotes = t.notes && t.notes.trim();
+
+  if(hasSteps){
+    html += `<div class="cards-2">
+      <div class="card">
+        <div class="section-label">How it works</div>
+        <ol class="steps">${stepsHTML(t.instructions)}</ol>
+      </div>
+      <div class="card-stack">`;
+
+    if(hasContains){
+      html += `<div class="card">
+        <div class="section-label">What the report contains</div>
+        <ul class="bullets">${bulletsHTML(ex.contains.join('\n'))}</ul>
+      </div>`;
+    }
+    if(hasCanDo){
+      html += `<div class="card">
+        <div class="section-label">What you can do</div>
+        <ul class="bullets">${bulletsHTML(ex.canDo.join('\n'))}</ul>
+      </div>`;
+    }
+    if(hasOutput || hasNotes){
+      html += `<div class="card">`;
+      if(hasOutput){
+        html += `<div class="section-label">Output</div>
+          <div class="chips" style="margin-bottom:${hasNotes?'12px':'0'};">${outputChipsHTML(ex.outputChips)}</div>`;
+      }
+      if(hasNotes){
+        html += `<div class="section-label">Important</div>
+          <div class="note-box"><ul class="bullets">${bulletsHTML(t.notes)}</ul></div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Custom tool fallback (no extras): show output + notes if present
+  if(!hasSteps && (hasOutput || hasNotes)){
+    html += `<div class="card">`;
+    if(hasOutput){
+      html += `<div class="section-label">Output</div><div class="chips" style="margin-bottom:${hasNotes?'12px':'0'};">${outputChipsHTML(ex.outputChips)}</div>`;
+    }
+    if(hasNotes){
+      html += `<div class="section-label">Notes</div><div class="note-box"><ul class="bullets">${bulletsHTML(t.notes)}</ul></div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ── Show tool ────────────────────────────────────────────────
+let activeId = null;
+function showTool(id, btn){
+  activeId = id;
+  document.getElementById('empty-state').style.display = 'none';
+
+  // Remove existing panel
+  const existing = document.getElementById('panel-'+id);
+  if(existing) existing.remove();
+
+  // Render fresh
+  const tools = loadTools();
+  const t = tools.find(x=>x.id===id);
+  if(!t) return;
+
+  const main = document.getElementById('main');
+  main.insertAdjacentHTML('beforeend', renderPanel(t));
+
+  // Hide all others
+  document.querySelectorAll('.tool-panel').forEach(p => {
+    if(p.id !== 'panel-'+id) p.style.display = 'none';
+    else p.style.display = 'flex';
+  });
+
+  // Nav highlight
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const navBtn = btn || document.getElementById('nav-'+id);
+  if(navBtn) navBtn.classList.add('active');
+
+  main.scrollTo(0,0);
+}
+
+// ── Modal ────────────────────────────────────────────────────
+let editingId = null;
+
+function openModal(id){
+  editingId = id;
+  const tools = loadTools();
+  const isNew = !id;
+  document.getElementById('modal-title').textContent = isNew ? 'Add tool' : 'Edit tool';
+  document.getElementById('btn-delete').style.display = isNew ? 'none' : 'flex';
+
+  if(isNew){
+    ['f-name','f-desc','f-link','f-btn-label','f-instructions','f-notes'].forEach(f=>document.getElementById(f).value='');
+    document.getElementById('f-platform').value = 'claude';
+  } else {
+    const t = tools.find(x=>x.id===id);
+    if(!t) return;
+    document.getElementById('f-name').value = t.name||'';
+    document.getElementById('f-platform').value = t.platform||'claude';
+    document.getElementById('f-desc').value = t.desc||'';
+    document.getElementById('f-link').value = t.link||'';
+    document.getElementById('f-btn-label').value = t.btnLabel||'';
+    document.getElementById('f-instructions').value = t.instructions||'';
+    document.getElementById('f-notes').value = t.notes||'';
+  }
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function closeModal(){ document.getElementById('modal-bg').classList.remove('open'); }
+function closeModalOutside(e){ if(e.target===document.getElementById('modal-bg')) closeModal(); }
+
+function saveTool(){
+  const name  = document.getElementById('f-name').value.trim();
+  const link  = document.getElementById('f-link').value.trim();
+  if(!name) { alert('Tool name is required.'); return; }
+
+  const tools = loadTools();
+  const platform = document.getElementById('f-platform').value;
+  const desc     = document.getElementById('f-desc').value.trim();
+  const btnLabel = document.getElementById('f-btn-label').value.trim();
+  const instr    = document.getElementById('f-instructions').value.trim();
+  const notes    = document.getElementById('f-notes').value.trim();
+
+  if(editingId){
+    const idx = tools.findIndex(x=>x.id===editingId);
+    if(idx!==-1){
+      const t = tools[idx];
+      tools[idx] = {
+        ...t,
+        name, platform, desc, link, btnLabel,
+        instructions: instr,
+        notes: notes,
+        tag: t.builtin ? t.tag : `${platform.charAt(0).toUpperCase()+platform.slice(1)}`,
+        tagIcon: t.builtin ? t.tagIcon : (platform==='claude'?'ti-brand-claude':platform==='glean'?'ti-external-link':'ti-tool'),
+        section: t.builtin ? t.section : (platform==='claude'?'Claude Projects':platform==='glean'?'Glean':'Custom')
+      };
+    }
+  } else {
+    const newId = Date.now().toString();
+    tools.push({
+      id: newId,
+      builtin: false,
+      platform, name, desc, link, btnLabel,
+      instructions: instr,
+      notes: notes,
+      tag: `${platform.charAt(0).toUpperCase()+platform.slice(1)}`,
+      tagIcon: platform==='claude'?'ti-brand-claude':platform==='glean'?'ti-external-link':'ti-tool',
+      section: platform==='claude'?'Claude Projects':platform==='glean'?'Glean':'Custom',
+      meta:[], metaIcons:[], extras:{}
+    });
+    editingId = newId;
+  }
+
+  saveTools(tools);
+  renderSidebar();
+  closeModal();
+  showTool(editingId);
+  downloadHTML();
+}
+
+function deleteTool(){
+  if(!editingId || !confirm('Delete this tool?')) return;
+  const tools = loadTools().filter(x=>x.id!==editingId);
+  saveTools(tools);
+  renderSidebar();
+  const panel = document.getElementById('panel-'+editingId);
+  if(panel) panel.remove();
+  document.getElementById('empty-state').style.display = 'flex';
+  closeModal();
+  downloadHTML();
+}
+
+// ── Download ─────────────────────────────────────────────────
+function downloadHTML(){
+  const tools = loadTools();
+  let html = document.documentElement.outerHTML;
+  // Bake current tools so they load on any machine
+  const injection = `const SK = 'fpa_tools_v4'; (function(){ try{ localStorage.setItem(SK, ${JSON.stringify(JSON.stringify(tools))}); }catch(e){} })();`;
+  html = html.replace("const SK = 'fpa_tools_v4';", injection);
+  const blob = new Blob([html],{type:'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fpa_ai_launchpad.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Init ─────────────────────────────────────────────────────
+// If no stored tools yet, seed with defaults
+if(!localStorage.getItem(SK)) saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+renderSidebar();
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>
