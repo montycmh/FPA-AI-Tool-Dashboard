@@ -296,6 +296,31 @@ strong.hl{font-weight:600;color:#2C2C2A;}
         <option value="Other">Other</option>
       </select>
     </div>
+
+    <!-- Recurrence -->
+    <div style="background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <i class="ti ti-repeat" style="font-size:15px;color:#534AB7;"></i>
+          <span style="font-size:13px;font-weight:600;color:#2C2C2A;">Monthly recurrence</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;">
+          <input type="checkbox" id="dl-recurring" onchange="toggleRecurFields()" style="width:15px;height:15px;accent-color:#1E2761;">
+          <span style="font-size:12px;color:#5F5E5A;">Repeat every month</span>
+        </label>
+      </div>
+      <div id="dl-recur-fields" style="display:none;flex-direction:column;gap:8px;">
+        <div class="field">
+          <label>Recurrence mode</label>
+          <select id="dl-recur-mode">
+            <option value="auto">Auto — generates on the same day each month</option>
+            <option value="confirm">Confirm — reminds me to set the date each month</option>
+          </select>
+          <span class="field-hint" id="dl-recur-hint">The next instance will be created automatically on the same day next month.</span>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-delete" id="dl-btn-delete" style="display:none" onclick="deleteDeadline()"><i class="ti ti-trash"></i>Delete</button>
       <button class="btn-cancel" onclick="closeDLModal()">Cancel</button>
@@ -323,6 +348,7 @@ strong.hl{font-weight:600;color:#2C2C2A;}
     <!-- Tabs -->
     <div style="display:flex;gap:0;border-bottom:.5px solid #D3D1C7;margin-bottom:14px;">
       <button id="tab-upcoming" onclick="switchTab('upcoming')" style="padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;">Upcoming</button>
+      <button id="tab-recurring" onclick="switchTab('recurring')" style="padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;">Recurring</button>
       <button id="tab-archived" onclick="switchTab('archived')" style="padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;">Archived</button>
     </div>
     <div id="all-events-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
@@ -913,6 +939,96 @@ function msUntil(iso){ return new Date(iso) - Date.now(); }
 function isToday(iso){ const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); }
 function isPast(iso){ return new Date(iso) < Date.now(); }
 
+// ── Recurrence helpers ────────────────────────────────────────
+function toggleRecurFields(){
+  const checked = document.getElementById('dl-recurring').checked;
+  document.getElementById('dl-recur-fields').style.display = checked ? 'flex' : 'none';
+}
+
+function nextMonthSameDay(isoDate){
+  const d = new Date(isoDate);
+  const next = new Date(d);
+  next.setMonth(next.getMonth() + 1);
+  // Handle month overflow (e.g. Jan 31 → Feb 28)
+  if(next.getDate() !== d.getDate()) next.setDate(0);
+  return next.toISOString().slice(0,10);
+}
+
+function processRecurringEvents(){
+  const deadlines = loadDeadlines();
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  let changed = false;
+  const toAdd = [];
+  const confirmNeeded = [];
+
+  deadlines.forEach(d => {
+    if(!d.recurring || d.archived) return;
+    // Check if we already generated this month's instance
+    if(d.lastGeneratedMonth === thisMonthKey) return;
+    // Only trigger if the template event is in a past month
+    const evDate = new Date(d.datetime);
+    const evMonthKey = `${evDate.getFullYear()}-${String(evDate.getMonth()+1).padStart(2,'0')}`;
+    if(evMonthKey >= thisMonthKey) return;
+
+    if(d.recurMode === 'auto'){
+      const newDate = nextMonthSameDay(d.datetime.slice(0,10));
+      const newTime = d.datetime.slice(11,16)||'09:00';
+      toAdd.push({
+        id: Date.now().toString()+Math.random().toString(36).slice(2,5),
+        name: d.name,
+        desc: d.desc||'',
+        datetime: isoFromFields(newDate, newTime),
+        category: d.category,
+        archived: false,
+        recurring: true,
+        recurMode: 'auto',
+        lastGeneratedMonth: thisMonthKey,
+        templateId: d.id
+      });
+      d.lastGeneratedMonth = thisMonthKey;
+      changed = true;
+    } else {
+      // confirm mode — flag for notification
+      confirmNeeded.push(d.name);
+      d.lastGeneratedMonth = thisMonthKey;
+      changed = true;
+    }
+  });
+
+  if(toAdd.length) deadlines.push(...toAdd);
+  if(changed) saveDeadlines(deadlines);
+
+  // Notify about confirm-mode events
+  if(confirmNeeded.length){
+    const msg = `${confirmNeeded.length} recurring event${confirmNeeded.length>1?'s need':'needs'} a date for this month: ${confirmNeeded.join(', ')}`;
+    if(typeof Notification!=='undefined' && Notification.permission==='granted'){
+      new Notification('📅 FP&A AI Tools — Monthly Events', { body: msg, requireInteraction: true });
+    }
+    // Also show banner in board
+    showRecurBanner(confirmNeeded);
+  }
+}
+
+function showRecurBanner(events){
+  const existing = document.getElementById('recur-banner');
+  if(existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'recur-banner';
+  banner.style.cssText = 'background:#EEEDFE;border:.5px solid #C4BFEE;border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <i class="ti ti-repeat" style="color:#534AB7;font-size:16px;"></i>
+      <span style="font-size:13px;color:#534AB7;font-weight:600;">${events.length} recurring event${events.length>1?'s need':'needs'} a date this month: <span style="font-weight:400;">${events.join(', ')}</span></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button onclick="openAllEventsModal();switchTab('recurring')" style="background:#534AB7;border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;">Set dates</button>
+      <button onclick="document.getElementById('recur-banner').remove()" style="background:none;border:.5px solid #C4BFEE;border-radius:7px;color:#534AB7;font-size:12px;padding:5px 8px;cursor:pointer;"><i class="ti ti-x"></i></button>
+    </div>`;
+  const section = document.getElementById('deadline-section');
+  section.parentNode.insertBefore(banner, section);
+}
+
 function formatCountdown(ms){
   if(ms<=0) return {label:'Overdue',color:'#dc2626'};
   const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);
@@ -1055,6 +1171,9 @@ function openDLAddModal(){
   document.getElementById('dl-date').value = now.toISOString().slice(0,10);
   document.getElementById('dl-time').value = '09:00';
   document.getElementById('dl-category').value = 'Month Close';
+  document.getElementById('dl-recurring').checked = false;
+  document.getElementById('dl-recur-fields').style.display = 'none';
+  document.getElementById('dl-recur-mode').value = 'auto';
   document.getElementById('dl-modal-bg').classList.add('open');
 }
 
@@ -1069,6 +1188,10 @@ function openDLEditModal(id){
   document.getElementById('dl-date').value     = d.datetime.slice(0,10);
   document.getElementById('dl-time').value     = d.datetime.slice(11,16)||'09:00';
   document.getElementById('dl-category').value = d.category;
+  const isRecurring = !!d.recurring;
+  document.getElementById('dl-recurring').checked = isRecurring;
+  document.getElementById('dl-recur-fields').style.display = isRecurring ? 'flex' : 'none';
+  document.getElementById('dl-recur-mode').value = d.recurMode||'auto';
   document.getElementById('dl-modal-bg').classList.add('open');
 }
 
@@ -1080,13 +1203,25 @@ function saveDeadline(){
   const date = document.getElementById('dl-date').value;
   const time = document.getElementById('dl-time').value||'09:00';
   if(!name||!date){ alert('Name and date are required.'); return; }
-  const iso = isoFromFields(date,time);
+  const iso       = isoFromFields(date,time);
+  const recurring = document.getElementById('dl-recurring').checked;
+  const recurMode = document.getElementById('dl-recur-mode').value;
   const deadlines = loadDeadlines();
   if(dlEditId){
     const idx=deadlines.findIndex(x=>x.id===dlEditId);
-    if(idx!==-1) deadlines[idx]={...deadlines[idx],name,desc:document.getElementById('dl-desc').value.trim(),datetime:iso,category:document.getElementById('dl-category').value,archived:false};
+    if(idx!==-1) deadlines[idx]={
+      ...deadlines[idx],
+      name, desc:document.getElementById('dl-desc').value.trim(),
+      datetime:iso, category:document.getElementById('dl-category').value,
+      archived:false, recurring, recurMode: recurring ? recurMode : undefined
+    };
   } else {
-    deadlines.push({id:Date.now().toString(),name,desc:document.getElementById('dl-desc').value.trim(),datetime:iso,category:document.getElementById('dl-category').value,archived:false});
+    deadlines.push({
+      id:Date.now().toString(),
+      name, desc:document.getElementById('dl-desc').value.trim(),
+      datetime:iso, category:document.getElementById('dl-category').value,
+      archived:false, recurring, recurMode: recurring ? recurMode : undefined
+    });
   }
   saveDeadlines(deadlines);
   closeDLModal();
@@ -1112,38 +1247,50 @@ function closeAllEventsOutside(e){ if(e.target===document.getElementById('all-ev
 
 function switchTab(tab){
   activeTab = tab;
-  const upBtn = document.getElementById('tab-upcoming');
-  const arBtn = document.getElementById('tab-archived');
-  if(tab==='upcoming'){
-    upBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;';
-    arBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;';
-  } else {
-    arBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;';
-    upBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;';
-  }
+  ['upcoming','recurring','archived'].forEach(t => {
+    const btn = document.getElementById('tab-'+t);
+    if(!btn) return;
+    if(t===tab){
+      btn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;';
+    } else {
+      btn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;';
+    }
+  });
   renderAllEvents();
 }
 
 function renderAllEvents(){
-  const all = loadDeadlines();
+  const all  = loadDeadlines();
   const list = document.getElementById('all-events-list');
-  const events = all.filter(d=> activeTab==='upcoming' ? !d.archived : d.archived)
-                    .sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+
+  let events;
+  if(activeTab === 'upcoming'){
+    events = all.filter(d => !d.archived).sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+  } else if(activeTab === 'recurring'){
+    events = all.filter(d => d.recurring && !d.archived).sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+  } else {
+    events = all.filter(d => d.archived).sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+  }
 
   if(!events.length){
-    list.innerHTML=`<div style="font-size:13px;color:#888780;padding:16px 4px;text-align:center;">${activeTab==='upcoming'?'No upcoming events.':'No archived events.'}</div>`;
+    const msgs = { upcoming:'No upcoming events.', recurring:'No recurring events set up yet.', archived:'No archived events.' };
+    list.innerHTML=`<div style="font-size:13px;color:#888780;padding:16px 4px;text-align:center;">${msgs[activeTab]}</div>`;
     return;
   }
 
   list.innerHTML = events.map(d=>{
-    const cat = CAT_COLORS[d.category]||CAT_COLORS['Other'];
+    const cat     = CAT_COLORS[d.category]||CAT_COLORS['Other'];
     const dateStr = new Date(d.datetime).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const ms = msUntil(d.datetime);
-    const isPastEvent = ms<=0;
+    const ms      = msUntil(d.datetime);
+    const isPastEvent = ms <= 0;
+    const recurBadge = d.recurring
+      ? `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#EEEDFE;color:#534AB7;display:inline-flex;align-items:center;gap:3px;"><i class="ti ti-repeat" style="font-size:10px;"></i>${d.recurMode==='auto'?'Auto':'Confirm'}</span>`
+      : '';
     return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 12px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:10px;">
       <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;background:${cat.bg};color:${cat.color};">${d.category}</span>
+          ${recurBadge}
           <span style="font-size:11px;color:#888780;">${dateStr}</span>
           ${isPastEvent&&!d.archived?'<span style="font-size:10px;font-weight:600;color:#dc2626;background:#FCEBEB;padding:1px 6px;border-radius:20px;">Overdue</span>':''}
         </div>
@@ -1151,7 +1298,7 @@ function renderAllEvents(){
         ${d.desc?`<div style="font-size:12px;color:#5F5E5A;">${esc(d.desc)}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
-        ${activeTab==='upcoming'?`<button onclick="openDLEditModal('${d.id}');closeAllEventsModal();" style="background:#fff;border:.5px solid #D3D1C7;border-radius:7px;color:#5F5E5A;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;"><i class="ti ti-pencil" style="font-size:12px;"></i></button>`:''}
+        ${activeTab!=='archived'?`<button onclick="openDLEditModal('${d.id}');closeAllEventsModal();" style="background:#fff;border:.5px solid #D3D1C7;border-radius:7px;color:#5F5E5A;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;"><i class="ti ti-pencil" style="font-size:12px;"></i></button>`:''}
         ${activeTab==='archived'?`<button onclick="permanentDelete('${d.id}')" style="background:#fff;border:.5px solid #F7C1C1;border-radius:7px;color:#dc2626;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;"><i class="ti ti-trash" style="font-size:12px;"></i></button>`:''}
       </div>
     </div>`;
@@ -1244,6 +1391,7 @@ async function init(){
   else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
   renderSidebar();
   renderDeadlines();
+  processRecurringEvents();
   requestNotifPermission();
   dlTimer = setInterval(tickDeadlines, 1000);
   popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000);
