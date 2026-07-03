@@ -151,6 +151,30 @@ strong.hl{font-weight:600;color:#2C2C2A;}
 </aside>
 
 <div class="main" id="main">
+
+  <!-- ── Deadline Notifier ── -->
+  <div id="deadline-section" style="margin-bottom:22px;">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="background:#1E2761;border-radius:14px 14px 0 0;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(159,225,203,.15);border:1px solid rgba(159,225,203,.25);display:flex;align-items:center;justify-content:center;font-size:14px;color:#9FE1CB;flex-shrink:0;"><i class="ti ti-bell"></i></div>
+          <span style="font-size:14px;font-weight:600;color:#fff;">Today's Deadlines</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="openAllEventsModal()" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#CADCFC;font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;">
+            <i class="ti ti-calendar" style="font-size:13px;"></i>All events
+          </button>
+          <button onclick="openDLAddModal()" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#CADCFC;font-size:12px;font-weight:600;padding:5px 11px;cursor:pointer;">
+            <i class="ti ti-plus" style="font-size:13px;"></i>Add event
+          </button>
+        </div>
+      </div>
+      <div id="deadlines-list" style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;min-height:58px;align-items:flex-start;">
+        <div id="dl-empty" style="font-size:13px;color:#888780;padding:6px 4px;">No events due today.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="empty-state" id="empty-state">
     <i class="ti ti-arrow-left"></i>
     <span>Select a tool from the sidebar</span>
@@ -235,6 +259,76 @@ strong.hl{font-weight:600;color:#2C2C2A;}
       <button class="btn-delete" id="btn-delete" style="display:none" onclick="deleteTool()"><i class="ti ti-trash"></i>Delete</button>
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-save" onclick="saveTool()">Save tool</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deadline add/edit modal -->
+<div class="modal-bg" id="dl-modal-bg" onclick="closeDLModalOutside(event)">
+  <div class="modal">
+    <button class="modal-x" onclick="closeDLModal()"><i class="ti ti-x"></i></button>
+    <h3 id="dl-modal-title">Add event</h3>
+    <div class="field">
+      <label>Event name</label>
+      <input type="text" id="dl-name" placeholder="e.g. BD+3 Sign-off">
+    </div>
+    <div class="field">
+      <label>Short description <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#B4B2A9;">(optional)</span></label>
+      <input type="text" id="dl-desc" placeholder="e.g. Complete Team Ohana & Hiring Tracker review">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="dl-date">
+      </div>
+      <div class="field">
+        <label>Time</label>
+        <input type="time" id="dl-time">
+      </div>
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <select id="dl-category">
+        <option value="Month Close">Month Close</option>
+        <option value="Report">Report</option>
+        <option value="Meeting">Meeting</option>
+        <option value="External Deadline">External Deadline</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-delete" id="dl-btn-delete" style="display:none" onclick="deleteDeadline()"><i class="ti ti-trash"></i>Delete</button>
+      <button class="btn-cancel" onclick="closeDLModal()">Cancel</button>
+      <button class="btn-save" onclick="saveDeadline()">Save event</button>
+    </div>
+  </div>
+</div>
+
+<!-- All events modal -->
+<div class="modal-bg" id="all-events-bg" onclick="closeAllEventsOutside(event)">
+  <div class="modal" style="width:620px;max-width:96vw;">
+    <button class="modal-x" onclick="closeAllEventsModal()"><i class="ti ti-x"></i></button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px;">
+      <h3>All Events</h3>
+      <div style="display:flex;gap:8px;">
+        <label style="display:flex;align-items:center;gap:6px;padding:6px 11px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;font-size:12px;font-weight:600;color:#5F5E5A;cursor:pointer;">
+          <i class="ti ti-upload" style="font-size:14px;"></i>Import CSV / Excel
+          <input type="file" id="dl-import-file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importEvents(this)">
+        </label>
+        <button onclick="closeAllEventsModal();openDLAddModal()" style="display:flex;align-items:center;gap:6px;padding:6px 11px;background:#1E2761;border:none;border-radius:8px;font-size:12px;font-weight:600;color:#fff;cursor:pointer;">
+          <i class="ti ti-plus" style="font-size:14px;"></i>Add manually
+        </button>
+      </div>
+    </div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;border-bottom:.5px solid #D3D1C7;margin-bottom:14px;">
+      <button id="tab-upcoming" onclick="switchTab('upcoming')" style="padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;">Upcoming</button>
+      <button id="tab-archived" onclick="switchTab('archived')" style="padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;">Archived</button>
+    </div>
+    <div id="all-events-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
+    <!-- CSV template hint -->
+    <div style="margin-top:12px;padding:8px 12px;background:#F4F7FB;border-radius:8px;border:.5px solid #D3D1C7;">
+      <span style="font-size:11px;color:#888780;">CSV/Excel format: <code style="font-size:11px;">name, description, date (YYYY-MM-DD), time (HH:MM), category</code></span>
     </div>
   </div>
 </div>
@@ -776,6 +870,10 @@ async function submitToken(){
 
   document.getElementById('token-overlay').remove();
   renderSidebar();
+  renderDeadlines();
+  requestNotifPermission();
+  if(!dlTimer) dlTimer = setInterval(tickDeadlines, 1000);
+  if(!popupTimer){ popupTimer = setInterval(checkPopups, 2*60*60*1000); setTimeout(checkPopups,3000); }
 }
 
 // ── Download ─────────────────────────────────────────────────
@@ -792,21 +890,364 @@ function downloadHTML(){
   URL.revokeObjectURL(a.href);
 }
 
+// ── Deadline Notifier ─────────────────────────────────────────
+const DL_KEY = 'fpa_deadlines_v2';
+let dlEditId    = null;
+let dlTimer     = null;
+let popupTimer  = null;
+let activeTab   = 'upcoming';
+
+const CAT_COLORS = {
+  'Month Close':      {bg:'#E6F1FB',color:'#185FA5'},
+  'Report':           {bg:'#EEEDFE',color:'#534AB7'},
+  'Meeting':          {bg:'#E1F5EE',color:'#0F6E56'},
+  'External Deadline':{bg:'#FAEEDA',color:'#854F0B'},
+  'Other':            {bg:'#F1EFE8',color:'#5F5E5A'}
+};
+
+function loadDeadlines(){ try{ return JSON.parse(localStorage.getItem(DL_KEY))||[]; }catch(e){ return []; } }
+function saveDeadlines(d){ localStorage.setItem(DL_KEY, JSON.stringify(d)); }
+
+function isoFromFields(date, time){ return `${date}T${time||'00:00'}`; }
+function msUntil(iso){ return new Date(iso) - Date.now(); }
+function isToday(iso){ const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); }
+function isPast(iso){ return new Date(iso) < Date.now(); }
+
+function formatCountdown(ms){
+  if(ms<=0) return {label:'Overdue',color:'#dc2626'};
+  const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);
+  if(h>0) return {label:`${h}h ${m%60}m`,color:h<2?'#d97706':'#1D9E75'};
+  return {label:`${m}m ${s%60}s`,color:'#dc2626'};
+}
+
+function urgencyBorder(ms){
+  if(ms<=0) return '#F7C1C1';
+  const h=ms/3600000;
+  if(h<1) return '#FCA5A5';
+  if(h<24) return '#FCD34D';
+  return '#D3D1C7';
+}
+
+// ── Today's panel ────────────────────────────────────────────
+function renderDeadlines(){
+  const list  = document.getElementById('deadlines-list');
+  const empty = document.getElementById('dl-empty');
+  const all   = loadDeadlines();
+  const today = all.filter(d => !d.archived && isToday(d.datetime))
+                   .sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+
+  // Auto-archive past events not already archived
+  let changed = false;
+  all.forEach(d => {
+    if(!d.archived && isPast(d.datetime) && !isToday(d.datetime)){
+      d.archived = true; changed = true;
+    }
+  });
+  if(changed) saveDeadlines(all);
+
+  if(!today.length){
+    list.innerHTML='';
+    list.appendChild(empty);
+    empty.style.display='block';
+    return;
+  }
+  empty.style.display='none';
+
+  list.innerHTML = today.map(d=>{
+    const ms  = msUntil(d.datetime);
+    const {label,color} = formatCountdown(ms);
+    const cat = CAT_COLORS[d.category]||CAT_COLORS['Other'];
+    const border = urgencyBorder(ms);
+    const timeStr = new Date(d.datetime).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    return `<div onclick="openDLEditModal('${d.id}')" style="display:flex;flex-direction:column;gap:5px;padding:10px 13px;border:.5px solid ${border};border-radius:12px;min-width:155px;max-width:210px;cursor:pointer;background:#fff;transition:box-shadow .12s;" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow='none'">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+        <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${cat.bg};color:${cat.color};">${d.category}</span>
+        <span style="font-size:10px;color:#888780;">${timeStr}</span>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:#2C2C2A;line-height:1.3;">${esc(d.name)}</div>
+      ${d.desc?`<div style="font-size:11px;color:#5F5E5A;line-height:1.4;">${esc(d.desc)}</div>`:''}
+      <div style="font-size:13px;font-weight:700;color:${color};">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+function tickDeadlines(){
+  renderDeadlines();
+}
+
+// ── Popup reminders every 2 hours ────────────────────────────
+function checkPopups(){
+  if(typeof Notification === 'undefined') return;
+
+  const today = loadDeadlines()
+    .filter(d => !d.archived && isToday(d.datetime) && !isPast(d.datetime))
+    .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
+
+  if(!today.length) return;
+
+  if(Notification.permission === 'granted'){
+    today.forEach(d => {
+      const ms = msUntil(d.datetime);
+      const {label} = formatCountdown(ms);
+      const timeStr = new Date(d.datetime).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+      new Notification(`⏰ ${d.name}`, {
+        body: `${d.desc ? d.desc + ' · ' : ''}Due at ${timeStr} · ${label}`,
+        icon: 'https://cdn.jsdelivr.net/npm/@tabler/icons@2.44.0/icons/bell.svg',
+        tag: `fpa-deadline-${d.id}`,
+        requireInteraction: true
+      });
+    });
+  } else if(Notification.permission === 'default'){
+    Notification.requestPermission().then(perm => {
+      if(perm === 'granted') checkPopups();
+    });
+  }
+}
+
+function showReminderPopup(d){
+  // Kept as fallback if notifications are blocked
+  const existing = document.getElementById('dl-popup');
+  if(existing) existing.remove();
+  const existingOv = document.getElementById('dl-popup-overlay');
+  if(existingOv) existingOv.remove();
+
+  const ms = msUntil(d.datetime);
+  const {label,color} = formatCountdown(ms);
+  const cat = CAT_COLORS[d.category]||CAT_COLORS['Other'];
+  const timeStr = new Date(d.datetime).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+
+  const overlay = document.createElement('div');
+  overlay.id = 'dl-popup-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:499;';
+  document.body.appendChild(overlay);
+
+  const popup = document.createElement('div');
+  popup.id = 'dl-popup';
+  popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:500;width:340px;background:#fff;border:.5px solid #D3D1C7;border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.2);overflow:hidden;';
+  popup.innerHTML = `
+    <div style="background:#1E2761;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <i class="ti ti-bell" style="color:#9FE1CB;font-size:15px;"></i>
+        <span style="font-size:12px;font-weight:600;color:#fff;">Deadline Reminder</span>
+      </div>
+      <button onclick="document.getElementById('dl-popup').remove();document.getElementById('dl-popup-overlay').remove();" style="background:none;border:none;color:#CADCFC;font-size:18px;cursor:pointer;line-height:1;padding:0 2px;">&times;</button>
+    </div>
+    <div style="padding:12px 14px;display:flex;flex-direction:column;gap:6px;">
+      <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${cat.bg};color:${cat.color};width:fit-content;">${d.category}</span>
+      <div style="font-size:14px;font-weight:700;color:#1E2761;">${esc(d.name)}</div>
+      ${d.desc?`<div style="font-size:12px;color:#5F5E5A;">${esc(d.desc)}</div>`:''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
+        <span style="font-size:11px;color:#888780;">Due at ${timeStr}</span>
+        <span style="font-size:13px;font-weight:700;color:${color};">${label}</span>
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+}
+
+// ── Add/Edit modal ───────────────────────────────────────────
+function openDLAddModal(){
+  dlEditId = null;
+  document.getElementById('dl-modal-title').textContent = 'Add event';
+  document.getElementById('dl-btn-delete').style.display = 'none';
+  document.getElementById('dl-name').value = '';
+  document.getElementById('dl-desc').value = '';
+  const now = new Date();
+  document.getElementById('dl-date').value = now.toISOString().slice(0,10);
+  document.getElementById('dl-time').value = '09:00';
+  document.getElementById('dl-category').value = 'Month Close';
+  document.getElementById('dl-modal-bg').classList.add('open');
+}
+
+function openDLEditModal(id){
+  const d = loadDeadlines().find(x=>x.id===id);
+  if(!d) return;
+  dlEditId = id;
+  document.getElementById('dl-modal-title').textContent = 'Edit event';
+  document.getElementById('dl-btn-delete').style.display = 'flex';
+  document.getElementById('dl-name').value     = d.name;
+  document.getElementById('dl-desc').value     = d.desc||'';
+  document.getElementById('dl-date').value     = d.datetime.slice(0,10);
+  document.getElementById('dl-time').value     = d.datetime.slice(11,16)||'09:00';
+  document.getElementById('dl-category').value = d.category;
+  document.getElementById('dl-modal-bg').classList.add('open');
+}
+
+function closeDLModal(){ document.getElementById('dl-modal-bg').classList.remove('open'); }
+function closeDLModalOutside(e){ if(e.target===document.getElementById('dl-modal-bg')) closeDLModal(); }
+
+function saveDeadline(){
+  const name = document.getElementById('dl-name').value.trim();
+  const date = document.getElementById('dl-date').value;
+  const time = document.getElementById('dl-time').value||'09:00';
+  if(!name||!date){ alert('Name and date are required.'); return; }
+  const iso = isoFromFields(date,time);
+  const deadlines = loadDeadlines();
+  if(dlEditId){
+    const idx=deadlines.findIndex(x=>x.id===dlEditId);
+    if(idx!==-1) deadlines[idx]={...deadlines[idx],name,desc:document.getElementById('dl-desc').value.trim(),datetime:iso,category:document.getElementById('dl-category').value,archived:false};
+  } else {
+    deadlines.push({id:Date.now().toString(),name,desc:document.getElementById('dl-desc').value.trim(),datetime:iso,category:document.getElementById('dl-category').value,archived:false});
+  }
+  saveDeadlines(deadlines);
+  closeDLModal();
+  renderDeadlines();
+  if(document.getElementById('all-events-bg').classList.contains('open')) renderAllEvents();
+}
+
+function deleteDeadline(){
+  if(!dlEditId||!confirm('Delete this event?')) return;
+  saveDeadlines(loadDeadlines().filter(x=>x.id!==dlEditId));
+  closeDLModal();
+  renderDeadlines();
+  if(document.getElementById('all-events-bg').classList.contains('open')) renderAllEvents();
+}
+
+// ── All events modal ─────────────────────────────────────────
+function openAllEventsModal(){
+  document.getElementById('all-events-bg').classList.add('open');
+  switchTab('upcoming');
+}
+function closeAllEventsModal(){ document.getElementById('all-events-bg').classList.remove('open'); }
+function closeAllEventsOutside(e){ if(e.target===document.getElementById('all-events-bg')) closeAllEventsModal(); }
+
+function switchTab(tab){
+  activeTab = tab;
+  const upBtn = document.getElementById('tab-upcoming');
+  const arBtn = document.getElementById('tab-archived');
+  if(tab==='upcoming'){
+    upBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;';
+    arBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;';
+  } else {
+    arBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:600;color:#1E2761;border-bottom:2px solid #1E2761;cursor:pointer;';
+    upBtn.style.cssText='padding:8px 16px;border:none;background:none;font-size:13px;font-weight:400;color:#888780;border-bottom:2px solid transparent;cursor:pointer;';
+  }
+  renderAllEvents();
+}
+
+function renderAllEvents(){
+  const all = loadDeadlines();
+  const list = document.getElementById('all-events-list');
+  const events = all.filter(d=> activeTab==='upcoming' ? !d.archived : d.archived)
+                    .sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+
+  if(!events.length){
+    list.innerHTML=`<div style="font-size:13px;color:#888780;padding:16px 4px;text-align:center;">${activeTab==='upcoming'?'No upcoming events.':'No archived events.'}</div>`;
+    return;
+  }
+
+  list.innerHTML = events.map(d=>{
+    const cat = CAT_COLORS[d.category]||CAT_COLORS['Other'];
+    const dateStr = new Date(d.datetime).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const ms = msUntil(d.datetime);
+    const isPastEvent = ms<=0;
+    return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 12px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:10px;">
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;background:${cat.bg};color:${cat.color};">${d.category}</span>
+          <span style="font-size:11px;color:#888780;">${dateStr}</span>
+          ${isPastEvent&&!d.archived?'<span style="font-size:10px;font-weight:600;color:#dc2626;background:#FCEBEB;padding:1px 6px;border-radius:20px;">Overdue</span>':''}
+        </div>
+        <div style="font-size:13px;font-weight:600;color:#2C2C2A;">${esc(d.name)}</div>
+        ${d.desc?`<div style="font-size:12px;color:#5F5E5A;">${esc(d.desc)}</div>`:''}
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        ${activeTab==='upcoming'?`<button onclick="openDLEditModal('${d.id}');closeAllEventsModal();" style="background:#fff;border:.5px solid #D3D1C7;border-radius:7px;color:#5F5E5A;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;"><i class="ti ti-pencil" style="font-size:12px;"></i></button>`:''}
+        ${activeTab==='archived'?`<button onclick="permanentDelete('${d.id}')" style="background:#fff;border:.5px solid #F7C1C1;border-radius:7px;color:#dc2626;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;"><i class="ti ti-trash" style="font-size:12px;"></i></button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function permanentDelete(id){
+  if(!confirm('Permanently delete this archived event?')) return;
+  saveDeadlines(loadDeadlines().filter(x=>x.id!==id));
+  renderAllEvents();
+}
+
+// ── CSV / Excel import ───────────────────────────────────────
+async function importEvents(input){
+  const file = input.files[0];
+  if(!file) return;
+  const name = file.name.toLowerCase();
+
+  if(name.endsWith('.csv')){
+    const text = await file.text();
+    parseCSVEvents(text);
+  } else if(name.endsWith('.xlsx')||name.endsWith('.xls')){
+    // Use SheetJS if available, else fallback message
+    if(typeof XLSX !== 'undefined'){
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      parseCSVEvents(csv);
+    } else {
+      alert('Excel import requires SheetJS. Please save your file as CSV and import again.');
+    }
+  }
+  input.value='';
+}
+
+function parseCSVEvents(text){
+  const lines = text.trim().split('\n').filter(l=>l.trim());
+  // Skip header if first line looks like a header
+  const start = lines[0].toLowerCase().includes('name') ? 1 : 0;
+  let added = 0;
+  const deadlines = loadDeadlines();
+
+  lines.slice(start).forEach(line=>{
+    const cols = line.split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    const [name='',desc='',date='',time='09:00',category='Other'] = cols;
+    if(!name||!date) return;
+    // Validate date format
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    deadlines.push({
+      id: Date.now().toString()+Math.random().toString(36).slice(2,6),
+      name, desc, datetime: isoFromFields(date, time||'09:00'),
+      category: ['Month Close','Report','Meeting','External Deadline','Other'].includes(category) ? category : 'Other',
+      archived: false
+    });
+    added++;
+  });
+
+  saveDeadlines(deadlines);
+  renderDeadlines();
+  renderAllEvents();
+  alert(`${added} event${added!==1?'s':''} imported successfully.`);
+}
+
+// Request notification permission with explanation
+function requestNotifPermission(){
+  if(typeof Notification === 'undefined') return;
+  if(Notification.permission === 'default'){
+    Notification.requestPermission().then(perm => {
+      if(perm === 'granted'){
+        new Notification('✅ FP&A AI Tools', { body: 'Deadline reminders are now enabled. You\'ll be notified every 2 hours.' });
+      }
+    });
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────
 async function init(){
   const token = getToken();
   if(!token){
     showTokenPrompt();
+    renderDeadlines();
+    dlTimer = setInterval(tickDeadlines, 1000);
+    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000); // every 2 hours
+    setTimeout(checkPopups, 3000); // first check after 3s
     return;
   }
-  // Token exists — try Gist first
   const gistData = await gistRead();
-  if(gistData){
-    saveTools(gistData);
-  } else if(!localStorage.getItem(SK)){
-    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
-  }
+  if(gistData){ saveTools(gistData); }
+  else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
   renderSidebar();
+  renderDeadlines();
+  requestNotifPermission();
+  dlTimer = setInterval(tickDeadlines, 1000);
+  popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000);
+  setTimeout(checkPopups, 3000);
 }
 
 init();
