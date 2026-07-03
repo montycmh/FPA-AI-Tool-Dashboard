@@ -108,6 +108,9 @@ code{font-family:"SF Mono","Fira Code",monospace;font-size:11px;background:#F1EF
 strong.hl{font-weight:600;color:#2C2C2A;}
 .hint{font-size:11px;color:#888780;margin-top:5px;}
 
+.icon-opt{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;background:#fff;border:.5px solid #D3D1C7;color:#5F5E5A;transition:border-color .12s,background .12s,color .12s;flex-shrink:0;}
+.icon-opt:hover{border-color:#1D9E75;background:#E1F5EE;color:#0F6E56;}
+.icon-opt.selected{border-color:#1E2761;background:#1E2761;color:#fff;}
 /* ── Modal ── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(30,39,97,.5);z-index:300;align-items:center;justify-content:center;}
 .modal-bg.open{display:flex;}
@@ -159,40 +162,75 @@ strong.hl{font-weight:600;color:#2C2C2A;}
   <div class="modal">
     <button class="modal-x" onclick="closeModal()"><i class="ti ti-x"></i></button>
     <h3 id="modal-title">Add tool</h3>
-    <div class="field">
-      <label>Tool name</label>
-      <input type="text" id="f-name" placeholder="e.g. HC Actuals Dashboard">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field">
+        <label>Tool name</label>
+        <input type="text" id="f-name" placeholder="e.g. HC Actuals Dashboard">
+      </div>
+      <div class="field">
+        <label>Platform</label>
+        <select id="f-platform">
+          <option value="claude">Claude</option>
+          <option value="glean">Glean</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
     </div>
+
     <div class="field">
-      <label>Platform</label>
-      <select id="f-platform">
-        <option value="claude">Claude</option>
-        <option value="glean">Glean</option>
-        <option value="other">Other</option>
-      </select>
+      <label>Icon</label>
+      <div id="icon-picker" style="display:flex;flex-wrap:wrap;gap:6px;background:#F4F7FB;border:.5px solid #D3D1C7;border-radius:8px;padding:10px;"></div>
+      <input type="hidden" id="f-icon" value="ti-tool">
     </div>
+
     <div class="field">
       <label>Description</label>
       <input type="text" id="f-desc" placeholder="Short description shown under the title">
     </div>
-    <div class="field">
-      <label>Link</label>
-      <input type="url" id="f-link" placeholder="https://...">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field">
+        <label>Link</label>
+        <input type="url" id="f-link" placeholder="https://...">
+      </div>
+      <div class="field">
+        <label>Button label</label>
+        <input type="text" id="f-btn-label" placeholder="e.g. Open · Claude Project">
+      </div>
     </div>
+
     <div class="field">
-      <label>Button label</label>
-      <input type="text" id="f-btn-label" placeholder="e.g. Open · Claude Project">
+      <label>Files required <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#B4B2A9;">(optional)</span></label>
+      <textarea id="f-files" placeholder="One file per line&#10;e.g. Current month-end export&#10;Prior month-end export" style="min-height:70px;"></textarea>
+      <span class="field-hint">One per line → shown as file chips.</span>
     </div>
+
     <div class="field">
-      <label>Instructions</label>
-      <textarea id="f-instructions" placeholder="One item per line. Each line becomes a numbered step."></textarea>
-      <span class="field-hint">One item per line → numbered steps in the panel.</span>
+      <label>How it works — Steps</label>
+      <textarea id="f-instructions" placeholder="One step per line&#10;e.g. Upload the file to this project&#10;Claude processes and delivers the output"></textarea>
+      <span class="field-hint">One per line → numbered steps in the panel.</span>
     </div>
+
     <div class="field">
-      <label>Notes / rules (optional)</label>
-      <textarea id="f-notes" placeholder="One item per line. Shown as a highlighted note box." style="min-height:70px;"></textarea>
-      <span class="field-hint">One item per line → bullet list in a note box.</span>
+      <label>What the report contains <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#B4B2A9;">(optional)</span></label>
+      <textarea id="f-contains" placeholder="One item per line&#10;e.g. Summary table with all aging buckets" style="min-height:70px;"></textarea>
+      <span class="field-hint">One per line → bullet list.</span>
     </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field">
+        <label>Output <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#B4B2A9;">(optional)</span></label>
+        <textarea id="f-output" placeholder="One per line&#10;e.g. Self-contained HTML report" style="min-height:70px;"></textarea>
+        <span class="field-hint">One per line → output chips.</span>
+      </div>
+      <div class="field">
+        <label>Notes / rules <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#B4B2A9;">(optional)</span></label>
+        <textarea id="f-notes" placeholder="One per line&#10;e.g. Comp and Benefits is always excluded" style="min-height:70px;"></textarea>
+        <span class="field-hint">One per line → note box.</span>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-delete" id="btn-delete" style="display:none" onclick="deleteTool()"><i class="ti ti-trash"></i>Delete</button>
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
@@ -512,19 +550,29 @@ function openModal(id){
   document.getElementById('modal-title').textContent = isNew ? 'Add tool' : 'Edit tool';
   document.getElementById('btn-delete').style.display = isNew ? 'none' : 'flex';
 
+  const allFields = ['f-name','f-desc','f-link','f-btn-label','f-instructions','f-notes','f-files','f-contains','f-output'];
+
   if(isNew){
-    ['f-name','f-desc','f-link','f-btn-label','f-instructions','f-notes'].forEach(f=>document.getElementById(f).value='');
+    allFields.forEach(f=>document.getElementById(f).value='');
     document.getElementById('f-platform').value = 'claude';
+    buildIconPicker('ti-tool');
+    document.getElementById('f-icon').value = 'ti-tool';
   } else {
     const t = tools.find(x=>x.id===id);
     if(!t) return;
-    document.getElementById('f-name').value = t.name||'';
-    document.getElementById('f-platform').value = t.platform||'claude';
-    document.getElementById('f-desc').value = t.desc||'';
-    document.getElementById('f-link').value = t.link||'';
-    document.getElementById('f-btn-label').value = t.btnLabel||'';
-    document.getElementById('f-instructions').value = t.instructions||'';
-    document.getElementById('f-notes').value = t.notes||'';
+    document.getElementById('f-name').value        = t.name||'';
+    document.getElementById('f-platform').value    = t.platform||'claude';
+    document.getElementById('f-desc').value        = t.desc||'';
+    document.getElementById('f-link').value        = t.link||'';
+    document.getElementById('f-btn-label').value   = t.btnLabel||'';
+    document.getElementById('f-instructions').value= t.instructions||'';
+    document.getElementById('f-notes').value       = t.notes||'';
+    document.getElementById('f-files').value       = (t.extras?.chips||[]).join('\n');
+    document.getElementById('f-contains').value    = (t.extras?.contains||[]).join('\n');
+    document.getElementById('f-output').value      = (t.extras?.outputChips||[]).join('\n');
+    const icon = t.tagIcon||'ti-tool';
+    buildIconPicker(icon);
+    document.getElementById('f-icon').value = icon;
   }
   document.getElementById('modal-bg').classList.add('open');
 }
@@ -534,15 +582,21 @@ function closeModalOutside(e){ if(e.target===document.getElementById('modal-bg')
 
 function saveTool(){
   const name  = document.getElementById('f-name').value.trim();
-  const link  = document.getElementById('f-link').value.trim();
   if(!name) { alert('Tool name is required.'); return; }
 
-  const tools = loadTools();
+  const tools    = loadTools();
   const platform = document.getElementById('f-platform').value;
   const desc     = document.getElementById('f-desc').value.trim();
+  const link     = document.getElementById('f-link').value.trim();
   const btnLabel = document.getElementById('f-btn-label').value.trim();
   const instr    = document.getElementById('f-instructions').value.trim();
   const notes    = document.getElementById('f-notes').value.trim();
+  const icon     = document.getElementById('f-icon').value || 'ti-tool';
+  const files    = document.getElementById('f-files').value.trim().split('\n').filter(l=>l.trim()).map(l=>l.trim());
+  const contains = document.getElementById('f-contains').value.trim().split('\n').filter(l=>l.trim()).map(l=>l.trim());
+  const output   = document.getElementById('f-output').value.trim().split('\n').filter(l=>l.trim()).map(l=>l.trim());
+
+  const extras = { chips: files, contains, outputChips: output };
 
   if(editingId){
     const idx = tools.findIndex(x=>x.id===editingId);
@@ -553,8 +607,9 @@ function saveTool(){
         name, platform, desc, link, btnLabel,
         instructions: instr,
         notes: notes,
+        extras: { ...t.extras, ...extras },
         tag: t.builtin ? t.tag : `${platform.charAt(0).toUpperCase()+platform.slice(1)}`,
-        tagIcon: t.builtin ? t.tagIcon : (platform==='claude'?'ti-brand-claude':platform==='glean'?'ti-external-link':'ti-tool'),
+        tagIcon: t.builtin ? t.tagIcon : icon,
         section: t.builtin ? t.section : (platform==='claude'?'Claude Projects':platform==='glean'?'Glean':'Custom')
       };
     }
@@ -567,9 +622,9 @@ function saveTool(){
       instructions: instr,
       notes: notes,
       tag: `${platform.charAt(0).toUpperCase()+platform.slice(1)}`,
-      tagIcon: platform==='claude'?'ti-brand-claude':platform==='glean'?'ti-external-link':'ti-tool',
+      tagIcon: icon,
       section: platform==='claude'?'Claude Projects':platform==='glean'?'Glean':'Custom',
-      meta:[], metaIcons:[], extras:{}
+      meta:[], metaIcons:[], extras
     });
     editingId = newId;
   }
@@ -578,7 +633,6 @@ function saveTool(){
   renderSidebar();
   closeModal();
   showTool(editingId);
-  downloadHTML();
 }
 
 function deleteTool(){
@@ -590,10 +644,38 @@ function deleteTool(){
   if(panel) panel.remove();
   document.getElementById('empty-state').style.display = 'flex';
   closeModal();
-  downloadHTML();
 }
 
-// ── Gist config ──────────────────────────────────────────────
+// ── Icon picker ───────────────────────────────────────────────
+const ICONS = [
+  'ti-chart-bar','ti-chart-line','ti-chart-pie','ti-chart-dots','ti-chart-area',
+  'ti-report-money','ti-report-analytics','ti-report','ti-file-invoice','ti-file-invoice-dollar',
+  'ti-calculator','ti-cash','ti-coin','ti-currency-dollar','ti-wallet',
+  'ti-building-bank','ti-building','ti-briefcase','ti-users','ti-user',
+  'ti-table','ti-layout-dashboard','ti-database','ti-file-spreadsheet','ti-file-code',
+  'ti-clock-dollar','ti-refresh','ti-download','ti-upload','ti-code',
+  'ti-search','ti-filter','ti-adjustments','ti-settings','ti-tool',
+  'ti-lock','ti-shield','ti-alert-triangle','ti-flag','ti-star',
+  'ti-calendar','ti-trending-up','ti-trending-down','ti-arrows-exchange','ti-replace'
+];
+
+function buildIconPicker(selectedIcon){
+  const picker = document.getElementById('icon-picker');
+  picker.innerHTML = ICONS.map(ic => `
+    <div class="icon-opt${ic===selectedIcon?' selected':''}" onclick="selectIcon('${ic}')" title="${ic.replace('ti-','')}">
+      <i class="ti ${ic}"></i>
+    </div>`).join('');
+}
+
+function selectIcon(ic){
+  document.getElementById('f-icon').value = ic;
+  document.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('.icon-opt').forEach(el => {
+    if(el.querySelector('i').className === `ti ${ic}`) el.classList.add('selected');
+  });
+}
+
+
 const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
 const GIST_FILE = 'fpa_tools.json';
 const TOKEN_KEY = 'fpa_gh_token';
