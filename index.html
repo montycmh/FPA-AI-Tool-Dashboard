@@ -383,13 +383,14 @@ const DEFAULTS = [
   {
     id:'araging', builtin:true, platform:'claude', section:'Claude Projects',
     name:'A/R Aging Report',
-    tag:'Claude Project · Finance',
+    tag:'Report Generator · Finance',
     tagIcon:'ti-clock-dollar',
-    desc:'Converts raw NetSuite A/R aging exports into a clean, interactive dashboard for the monthly close review.',
+    desc:'Upload two NetSuite exports to generate a fully interactive A/R aging dashboard — no Claude required.',
     meta:['Two NetSuite exports','Monthly close','HTML output'],
     metaIcons:['ti-file-spreadsheet','ti-refresh','ti-code'],
-    link:'https://claude.ai/project/019f1ffa-0928-7204-b480-4a30e2035c1b',
-    btnLabel:'A/R Aging · Claude Project',
+    link:'',
+    btnLabel:'',
+    isGenerator: true,
     instructions:'Reads both files and determines current vs. prior from the filename date.\nCleans the data — redistributes credits from negative balance buckets against older overdue amounts.\nIdentifies the top 15 customers by total balance.\nCompares current vs. prior month to show variances.\nFlags customers where negative values appear in aging buckets.',
     notes:'',
     extras:{
@@ -545,8 +546,31 @@ function renderPanel(t){
     html += `</div></div>`;
   }
 
-  // Row 1: Open + Files
-  const hasLink = t.link && t.link.trim();
+  // Generator upload zone (replaces Open button)
+  if(t.isGenerator){
+    html += `<div class="card">
+      <div class="section-label">Upload files</div>
+      <div id="ar-upload-zone" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:18px 12px;background:#F4F7FB;border:1.5px dashed #D3D1C7;border-radius:10px;cursor:pointer;transition:border-color .12s;" id="ar-drop-1" ondragover="arDragOver(event,'ar-drop-1')" ondragleave="arDragLeave('ar-drop-1')" ondrop="arDrop(event,0)">
+            <i class="ti ti-file-upload" style="font-size:24px;color:#B4B2A9;" id="ar-icon-0"></i>
+            <span style="font-size:12px;font-weight:600;color:#5F5E5A;text-align:center;" id="ar-label-0">File 1 — click or drag</span>
+            <span style="font-size:10px;color:#B4B2A9;">JAZAR-ACO-MMDDYYYY.xlsx</span>
+            <input type="file" accept=".xlsx,.xls" style="display:none;" id="ar-file-0" onchange="arFileSelected(0,this)">
+          </label>
+          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:18px 12px;background:#F4F7FB;border:1.5px dashed #D3D1C7;border-radius:10px;cursor:pointer;transition:border-color .12s;" id="ar-drop-2" ondragover="arDragOver(event,'ar-drop-2')" ondragleave="arDragLeave('ar-drop-2')" ondrop="arDrop(event,1)">
+            <i class="ti ti-file-upload" style="font-size:24px;color:#B4B2A9;" id="ar-icon-1"></i>
+            <span style="font-size:12px;font-weight:600;color:#5F5E5A;text-align:center;" id="ar-label-1">File 2 — click or drag</span>
+            <span style="font-size:10px;color:#B4B2A9;">JAZAR-ACO-MMDDYYYY.xlsx</span>
+            <input type="file" accept=".xlsx,.xls" style="display:none;" id="ar-file-1" onchange="arFileSelected(1,this)">
+          </label>
+        </div>
+        <button id="ar-generate-btn" onclick="arGenerateReport()" disabled style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:#E2E8F0;border:none;border-radius:10px;font-size:13px;font-weight:600;color:#94A3B8;cursor:not-allowed;transition:all .15s;">
+          <i class="ti ti-report-analytics" style="font-size:16px;"></i>Generate Report
+        </button>
+      </div>
+    </div>`;
+  }
   const hasChips = ex.chips && ex.chips.length;
   if(hasLink || hasChips){
     html += `<div class="cards-2">`;
@@ -1375,6 +1399,473 @@ function requestNotifPermission(){
   }
 }
 
+// ── A/R Aging Report Generator ───────────────────────────────
+const arFiles = [null, null]; // [file0, file1]
+
+function arDragOver(e, id){ e.preventDefault(); document.getElementById(id).style.borderColor='#1D9E75'; }
+function arDragLeave(id){ document.getElementById(id).style.borderColor='#D3D1C7'; }
+function arDrop(e, idx){
+  e.preventDefault();
+  const id = idx===0?'ar-drop-1':'ar-drop-2';
+  document.getElementById(id).style.borderColor='#D3D1C7';
+  const file = e.dataTransfer.files[0];
+  if(file) arSetFile(idx, file);
+}
+function arFileSelected(idx, input){
+  if(input.files[0]) arSetFile(idx, input.files[0]);
+}
+function arSetFile(idx, file){
+  arFiles[idx] = file;
+  const icon  = document.getElementById('ar-icon-'+idx);
+  const label = document.getElementById('ar-label-'+idx);
+  const drop  = document.getElementById(idx===0?'ar-drop-1':'ar-drop-2');
+  icon.className  = 'ti ti-file-check';
+  icon.style.color = '#1D9E75';
+  label.textContent = file.name;
+  label.style.color = '#0F6E56';
+  drop.style.borderColor = '#1D9E75';
+  drop.style.borderStyle = 'solid';
+  // Enable button if both files loaded
+  if(arFiles[0] && arFiles[1]){
+    const btn = document.getElementById('ar-generate-btn');
+    btn.disabled = false;
+    btn.style.background = '#1E2761';
+    btn.style.color = '#fff';
+    btn.style.cursor = 'pointer';
+  }
+}
+
+async function arGenerateReport(){
+  const btn = document.getElementById('ar-generate-btn');
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+
+  try {
+    // Load SheetJS dynamically if not present
+    if(typeof XLSX === 'undefined'){
+      await new Promise((res,rej)=>{
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const [wb0, wb1] = await Promise.all([arReadXLSX(arFiles[0]), arReadXLSX(arFiles[1])]);
+    const d0 = arParseRows(wb0, arFiles[0].name);
+    const d1 = arParseRows(wb1, arFiles[1].name);
+
+    // Determine recent vs old by date in filename
+    const recent = d0.fileDate >= d1.fileDate ? d0 : d1;
+    const old    = d0.fileDate >= d1.fileDate ? d1 : d0;
+
+    // Apply offset to all customer rows (not totals)
+    arApplyOffset(recent.customers);
+    arApplyOffset(old.customers);
+
+    // Grand totals (raw, no offset)
+    const gt = recent.grandTotal;
+    const gtOld = old.grandTotal;
+
+    // Top 15 by total desc
+    const top15 = [...recent.customers].sort((a,b)=>b.total-a.total).slice(0,15);
+
+    // Lookup old values for each top15 customer
+    const oldMap = {};
+    old.customers.forEach(r => oldMap[r.customer] = r);
+
+    // Detect flags (using raw pre-offset values)
+    const flags = arDetectFlags(top15, recent.rawMap, old.rawMap);
+
+    // Derive labels
+    const rd = recent.fileDate;
+    const blueDate  = new Date(rd.slice(0,4), parseInt(rd.slice(4,6))-2, 1);
+    const greenDate = new Date(rd.slice(0,4), parseInt(rd.slice(4,6))-3, 1);
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const blueLabel  = MONTHS[blueDate.getMonth()]  + ' Close';
+    const greenLabel = MONTHS[greenDate.getMonth()] + ' Close';
+    const asOfLabel  = `${rd.slice(4,6)}/${rd.slice(6,8)}/${rd.slice(0,4)}`;
+    const outName    = `AR_Aging_Report_${MONTHS[blueDate.getMonth()]}${blueDate.getFullYear()}.html`;
+
+    const html = arBuildHTML({top15, oldMap, gt, gtOld, blueLabel, greenLabel, asOfLabel, flags, outName});
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+
+  } catch(err){
+    alert('Error generating report: ' + err.message);
+    console.error(err);
+  }
+
+  btn.innerHTML = '<i class="ti ti-report-analytics" style="font-size:16px;"></i>Generate Report';
+  btn.disabled = false;
+  btn.style.background = '#1E2761';
+  btn.style.color = '#fff';
+}
+
+async function arReadXLSX(file){
+  return new Promise((res,rej)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        res(wb);
+      } catch(err){ rej(err); }
+    };
+    reader.onerror = rej;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function arParseRows(wb, filename){
+  // Extract date from filename: JAZAR-ACO-MMDDYYYY.xlsx
+  const m = filename.match(/(\d{8})\.xlsx$/i);
+  if(!m) throw new Error(`Filename "${filename}" doesn't match pattern JAZAR-ACO-MMDDYYYY.xlsx`);
+  const raw = m[1]; // MMDDYYYY
+  const fileDate = raw.slice(4,8) + raw.slice(0,2) + raw.slice(2,4); // YYYYMMDD for sorting
+
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:0});
+
+  // Headers at row 7 (idx 6), data from row 9 (idx 8)
+  const toNum = v => { if(typeof v==='number') return v; const s=String(v||'').replace(/[$,\s]/g,''); if(s.match(/^\([\d.]+\)$/)) return -parseFloat(s.slice(1,-1)); return parseFloat(s)||0; };
+
+  const customers = [];
+  const rawMap    = {};
+  let grandTotal  = null;
+
+  for(let i=8; i<data.length; i++){
+    const row = data[i];
+    const customer = String(row[0]||'').trim();
+    if(!customer) continue;
+    const cur  = toNum(row[1]);
+    const b30  = toNum(row[2]);
+    const b60  = toNum(row[3]);
+    const b90  = toNum(row[4]);
+    const b90p = toNum(row[5]);
+    const tot  = toNum(row[6]);
+    if(customer.toLowerCase()==='total'){
+      grandTotal = {cur,b30,b60,b90,b90p,tot};
+    } else {
+      const entry = {customer,cur,b30,b60,b90,b90p,total:tot};
+      customers.push(entry);
+      rawMap[customer] = {cur,b30,b60,b90,b90p,total:tot};
+    }
+  }
+  if(!grandTotal) throw new Error(`Could not find "Total" row in ${filename}`);
+  return {customers, grandTotal, rawMap, fileDate};
+}
+
+function arApplyOffset(rows){
+  rows.forEach(r => {
+    // Order: 90+, 61-90, 31-60, 0-30, Not Due Yet (cur)
+    const buckets = ['b90p','b90','b60','b30','cur'];
+    let credit = 0;
+    buckets.forEach(k => {
+      if(r[k] < 0){ credit += Math.abs(r[k]); r[k] = 0; }
+    });
+    if(credit > 0){
+      // distribute against positive buckets
+      buckets.forEach(k => {
+        if(credit <= 0) return;
+        if(r[k] > 0){
+          const used = Math.min(r[k], credit);
+          r[k] -= used;
+          credit -= used;
+        }
+      });
+      // remainder goes to cur (can go negative)
+      if(credit > 0) r.cur -= credit;
+    }
+  });
+}
+
+function arDetectFlags(top15, recentRaw, oldRaw){
+  const flags = {};
+  const bkeys = ['b30','b60','b90','b90p'];
+  const blabels = {'b30':'0–30 days','b60':'31–60 days','b90':'61–90 days','b90p':'90+ days'};
+  top15.forEach(r => {
+    const rr = recentRaw[r.customer] || {};
+    const or = oldRaw[r.customer]   || {};
+    bkeys.forEach(k => {
+      const rv = rr[k]||0, ov = or[k]||0;
+      if(rv >= 0 && ov >= 0) return;
+      let note = '';
+      if(ov < 0 && rv >= 0) note = `Bucket was negative in prior close (${arFmt(ov)}), changed sign. Verify if credit was correctly applied or rebucketed.`;
+      else if(rv < 0 && ov === 0) note = `New negative appeared in current close (${arFmt(rv)}), not present in prior close. Verify source of credit.`;
+      else if(rv < 0 && ov < 0) note = `Negative present in both closes (current: ${arFmt(rv)}, prior: ${arFmt(ov)}). Verify if amounts are consistent.`;
+      if(note){
+        if(!flags[r.customer]) flags[r.customer] = [];
+        flags[r.customer].push({bucket: blabels[k], current: rv, prior: ov, note});
+      }
+    });
+  });
+  return flags;
+}
+
+function arFmt(n){ if(n===0) return '–'; if(n<0) return `(${Math.abs(n).toLocaleString()})`; return n.toLocaleString(); }
+function arPct(n,d){ if(!d) return '–'; return Math.round(n/d*100)+'%'; }
+
+function arBuildHTML({top15, oldMap, gt, gtOld, blueLabel, greenLabel, asOfLabel, flags, outName}){
+  const varColor = v => v > 0 ? 'pos-var' : v < 0 ? 'neg-var' : 'zero';
+  const vcTd = (v, extra='') => `<td class="${varColor(v)}${extra}">${arFmt(v)}</td>`;
+  const gt60p   = gt.b90 + gt.b90p;
+  const gtOld60p = (gtOld.b90||0) + (gtOld.b90p||0);
+
+  // Build state object for editable cells
+  const stateData = {};
+  top15.forEach(r => {
+    const o = oldMap[r.customer] || {b90:0,b90p:0,total:0};
+    stateData[r.customer] = { cur:r.cur, b30:r.b30, b60:r.b60, b90:r.b90, b90p:r.b90p, tot:r.total, ab90:o.b90||0, ab90p:o.b90p||0 };
+  });
+
+  // Customer rows HTML
+  const custRows = top15.map(r => {
+    const hasflag = !!flags[r.customer];
+    const fc = hasflag ? ' flagged' : '';
+    const fi = hasflag ? ' <span class="flag-icon" title="Negative inconsistency detected">&#9888;</span>' : '';
+    const o  = oldMap[r.customer] || {b90:0,b90p:0};
+    const editTd = (field, val) => `<td class="editable${fc}"><input class="cell-edit" data-name="${esc(r.customer)}" data-field="${field}" value="${val===0?'':arFmt(val)}" placeholder="-"/></td>`;
+    return `<tr class="cust">
+      <td class="name${fc}">${esc(r.customer)}${fi}</td>
+      ${editTd('cur', r.cur)}${editTd('b30', r.b30)}${editTd('b60', r.b60)}${editTd('b90', r.b90)}${editTd('b90p', r.b90p)}
+      <td class="${fc}">${arFmt(r.b90+r.b90p)}</td>
+      <td class="${fc}">${arFmt(r.total)}</td>
+      <td class="div-col${fc}">${arFmt(o.b90||0)}</td>
+      <td class="${fc}">${arFmt(o.b90p||0)}</td>
+      <td class="${fc}">${arFmt((o.b90||0)+(o.b90p||0))}</td>
+      ${vcTd(r.b90p-(o.b90p||0),' div-col')}
+      ${vcTd((r.b90+r.b90p)-((o.b90||0)+(o.b90p||0)))}
+    </tr>`;
+  }).join('');
+
+  // Flag rows HTML
+  const hasFlags = Object.keys(flags).length > 0;
+  let flagRowsHTML = '';
+  Object.entries(flags).forEach(([cust, fs]) => {
+    fs.forEach((f,i) => {
+      flagRowsHTML += `<tr>
+        <td>${i===0?esc(cust):''}</td>
+        <td>${f.bucket}</td>
+        <td class="${f.current<0?'val-neg':'val-pos'}">${arFmt(f.current)}</td>
+        <td class="${f.prior<0?'val-neg':'val-pos'}">${arFmt(f.prior)}</td>
+        <td>${f.note}</td>
+      </tr>`;
+    });
+  });
+
+  const top15StateJSON = JSON.stringify(top15.map(r => {
+    const o = oldMap[r.customer]||{b90:0,b90p:0};
+    return {name:r.customer, cur:r.cur, b30:r.b30, b60:r.b60, b90:r.b90, b90p:r.b90p, tot:r.total, ab90:o.b90||0, ab90p:o.b90p||0};
+  }));
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(outName.replace('.html',''))}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;background:#f5f6f8;color:#1a1a2e;padding:24px;min-height:100vh;}
+.page{max-width:960px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,.08);padding:16px 20px 24px;}
+.report-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:1.5px solid #e2e6ea;}
+.report-header h1{font-size:17px;font-weight:600;color:#0c2340;letter-spacing:-.01em;}
+.report-header .subtitle{font-size:11px;color:#6b7a8d;margin-top:3px;}
+.meta-pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.pill{font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+.pill-blue{background:#e6f1fb;color:#0c447c;}.pill-green{background:#eaf3de;color:#3b6d11;}.pill-gray{background:#f1efe8;color:#444441;}
+.table-wrap{overflow-x:visible;width:100%;}
+table{width:100%;border-collapse:collapse;font-size:10px;min-width:0;table-layout:fixed;}
+colgroup col:first-child{width:120px;}
+thead tr:first-child th{border-bottom:none;}thead tr:last-child th{border-top:none;}
+th{padding:4px 5px;text-align:right;border:.5px solid #d0d7df;white-space:normal;overflow:hidden;font-weight:500;line-height:1.2;word-break:break-word;}
+th.left{text-align:left;}
+th.grp-blue{background:#0c447c;color:#b5d4f4;border-color:#185fa5;text-align:center;}
+th.grp-green{background:#3b6d11;color:#c0dd97;border-color:#639922;text-align:center;}
+th.grp-var{background:#854f0b;color:#fac775;border-color:#ba7517;text-align:center;}
+th.sub{font-size:10px;font-weight:400;}
+td{padding:4px 5px;text-align:right;border:.5px solid #d0d7df;color:#1a1a2e;white-space:nowrap;overflow:visible;line-height:1.3;}
+td.name{text-align:left;font-size:9.5px;color:#1a1a2e;white-space:normal;word-break:break-word;line-height:1.3;overflow:visible;}
+tr.total-row td{background:#f0f4f8;font-weight:600;border-top:1.5px solid #b0bcc8;}
+tr.pct-row td{color:#6b7a8d;font-size:9px;background:#fafbfc;}
+tr.cust:hover td{background:#f7f9fb;}
+tr.spacer td{height:8px;border:none;background:#f5f6f8;}
+.div-col{border-left:2px solid #b0bcc8!important;}
+.pos-var{color:#a32d2d;font-weight:600;}.neg-var{color:#27670a;font-weight:600;}.zero{color:#b0bcc8;}
+td.editable{background:#f0f7ff;cursor:text;}
+td.editable:focus-within{background:#e0efff;outline:1.5px solid #378add;border-radius:2px;}
+input.cell-edit{width:100%;text-align:right;background:transparent;border:none;color:#1a1a2e;font-size:10px;font-family:inherit;padding:0;cursor:text;line-height:1.3;}
+input.cell-edit:focus{outline:none;}
+td.flagged,td.flagged input.cell-edit{background:#fff7e6!important;color:#7a3e00;}
+tr.cust:hover td.flagged{background:#fff0d0!important;}
+.flag-icon{color:#ba7517;font-size:11px;margin-left:4px;vertical-align:middle;}
+.recalc-note{display:none;font-size:10.5px;color:#378add;margin-top:6px;font-style:italic;}
+.flags-section{margin-top:24px;border:1px solid #f0c880;border-radius:8px;overflow:hidden;}
+.flags-header{background:#854f0b;color:#fac775;font-size:11.5px;font-weight:600;padding:8px 14px;display:flex;align-items:center;gap:7px;letter-spacing:.01em;}
+.flag-table{width:100%;border-collapse:collapse;font-size:11px;}
+.flag-table th{background:#fdf3e0;color:#7a3e00;font-weight:600;text-align:left;padding:6px 12px;border-bottom:1px solid #f0d8a0;border-right:.5px solid #f0d8a0;}
+.flag-table td{padding:7px 12px;text-align:left;border-bottom:.5px solid #f0e8c8;border-right:.5px solid #f0e8c8;color:#3a2800;white-space:normal;}
+.flag-table tr:last-child td{border-bottom:none;}
+.flag-table .val-neg{color:#a32d2d;font-weight:600;}.flag-table .val-pos{color:#1a1a2e;}
+.btn-freeze{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:5px 14px;border-radius:6px;border:1.5px solid #0c447c;background:#fff;color:#0c447c;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;}
+.btn-freeze:hover{background:#e6f1fb;}
+.btn-freeze.locked{border-color:#3b6d11;color:#3b6d11;}
+.btn-freeze.locked:hover{background:#eaf3de;}
+.btn-copy{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:5px 14px;border-radius:6px;border:1.5px solid #6b7a8d;background:#fff;color:#6b7a8d;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;}
+.btn-copy:hover{background:#f0f4f8;border-color:#1a1a2e;color:#1a1a2e;}
+.btn-copy.success{border-color:#3b6d11;color:#3b6d11;background:#eaf3de;}
+.btn-copy.error{border-color:#a32d2d;color:#a32d2d;background:#fdf0f0;}
+.btn-row{display:flex;gap:8px;align-items:center;}
+body.frozen td.editable{background:inherit!important;cursor:default;}
+body.frozen td.editable:focus-within{outline:none;background:inherit!important;}
+body.frozen input.cell-edit{pointer-events:none;cursor:default;color:#1a1a2e;}
+body.frozen td.flagged,body.frozen td.flagged input.cell-edit{background:inherit!important;color:#1a1a2e!important;}
+body.frozen tr.cust:hover td.flagged{background:#f7f9fb!important;}
+body.frozen .flag-icon{display:none;}
+body.frozen .flags-section{display:none;}
+body.frozen .recalc-note{display:none!important;}
+@media print{body{background:#fff;padding:0;}.page{box-shadow:none;border-radius:0;padding:16px;}input.cell-edit{-webkit-appearance:none;}}
+</style></head><body>
+<div class="page">
+  <div class="report-header">
+    <div>
+      <h1>A/R Aging Report</h1>
+      <div class="subtitle">Generated from NetSuite export · Rules-based calculation</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;">
+      <div class="meta-pills">
+        <span class="pill pill-gray">Days overdue as of <strong>${asOfLabel}</strong></span>
+        <span class="pill pill-blue">Blue → ${blueLabel}</span>
+        <span class="pill pill-green">Green → ${greenLabel}</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn-copy" id="btn-copy" onclick="copyTableAsImage()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copy-label">Copy as image</span>
+        </button>
+        <button class="btn-copy" id="btn-dl-png" onclick="downloadTableAsImage()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="dl-png-label">Download PNG</span>
+        </button>
+        <button class="btn-freeze" id="btn-freeze" onclick="toggleFreeze()">
+          <svg id="freeze-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span id="freeze-label">Lock report</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <colgroup>
+        <col style="width:108px">
+        <col style="width:70px"><col style="width:62px"><col style="width:62px"><col style="width:62px"><col style="width:62px"><col style="width:70px"><col style="width:74px">
+        <col style="width:62px"><col style="width:62px"><col style="width:70px">
+        <col style="width:74px"><col style="width:74px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="left grp-blue" rowspan="2" style="font-size:9px;">Days overdue<br><span style="font-weight:400;font-size:8.5px;">as of ${asOfLabel}</span></th>
+          <th class="grp-blue" colspan="7" style="font-size:9.5px;">A/R Aging Report (${blueLabel})</th>
+          <th class="grp-green div-col" colspan="3" style="font-size:9.5px;">A/R Aging Report (${greenLabel})</th>
+          <th class="grp-var div-col" colspan="2" style="font-size:9.5px;">Variance</th>
+        </tr>
+        <tr>
+          <th class="grp-blue sub">Not due yet</th><th class="grp-blue sub">0 – 30</th><th class="grp-blue sub">31 – 60</th>
+          <th class="grp-blue sub">61 – 90</th><th class="grp-blue sub">90+</th>
+          <th class="grp-blue sub">60+ days total</th><th class="grp-blue sub">Total balance</th>
+          <th class="grp-green sub div-col">61 – 90</th><th class="grp-green sub">90+</th><th class="grp-green sub">60+ days total</th>
+          <th class="grp-var sub div-col">90+ vs prior close</th><th class="grp-var sub">60+ vs prior close</th>
+        </tr>
+      </thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+
+  <div class="recalc-note" id="recalc-note">* Subtotals and variances recalculated after manual edit.</div>
+
+  <div class="flags-section" id="flags-section" style="${hasFlags?'':'display:none'}">
+    <div class="flags-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Negative bucket inconsistencies — Top 15 (requires investigation)
+    </div>
+    <table class="flag-table">
+      <thead><tr>
+        <th style="width:200px;">Customer</th><th style="width:90px;">Bucket</th>
+        <th style="width:130px;">${blueLabel} value</th><th style="width:130px;">${greenLabel} value</th><th>Note</th>
+      </tr></thead>
+      <tbody>${flagRowsHTML}</tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const MAY_TOTAL = ${JSON.stringify({cur:gt.cur,b30:gt.b30,b60:gt.b60,b90:gt.b90,b90p:gt.b90p,tot:gt.tot})};
+MAY_TOTAL['60p'] = MAY_TOTAL.b90 + MAY_TOTAL.b90p;
+const APR_TOTAL = ${JSON.stringify({b90:gtOld.b90||0,b90p:gtOld.b90p||0,tot:gtOld.tot||0})};
+APR_TOTAL['60p'] = APR_TOTAL.b90 + APR_TOTAL.b90p;
+const RAW = ${top15StateJSON};
+const state = {};
+RAW.forEach(r => { state[r.name] = {cur:r.cur,b30:r.b30,b60:r.b60,b90:r.b90,b90p:r.b90p,tot:r.tot,ab90:r.ab90,ab90p:r.ab90p}; });
+const FLAGS = ${JSON.stringify(flags)};
+
+const fmt = n => { if(n===0) return '-'; const abs=Math.round(Math.abs(n)).toLocaleString('en-US'); return n<0?'('+abs+')':abs; };
+const pct = (n,d) => d===0?'-':Math.round(n/d*100)+'%';
+const vcTd = (v,ex='') => { if(v===0) return \`<td class="zero\${ex}">-</td>\`; return \`<td class="\${v>0?'pos-var':'neg-var'}\${ex}">\${fmt(v)}</td>\`; };
+
+function calcT15(){ const t={cur:0,b30:0,b60:0,b90:0,b90p:0,tot:0,ab90:0,ab90p:0}; RAW.forEach(r=>{ const s=state[r.name]; t.cur+=s.cur;t.b30+=s.b30;t.b60+=s.b60;t.b90+=s.b90;t.b90p+=s.b90p;t.tot+=s.tot;t.ab90+=s.ab90;t.ab90p+=s.ab90p; }); t['60p']=t.b90+t.b90p;t['a60p']=t.ab90+t.ab90p; return t; }
+function parseInput(v){ const neg=v.trim().startsWith('(')||v.trim().startsWith('-'); const n=parseFloat(v.replace(/[(),\\-\\s]/g,'').replace(/,/g,'')); if(isNaN(n)) return null; return neg?-Math.abs(n):n; }
+function editCell(name,field,val,ex=''){ const fc=FLAGS[name]?' flagged':''; return \`<td class="editable\${ex}\${fc}"><input class="cell-edit" data-name="\${name.replace(/"/g,'&quot;')}" data-field="\${field}" value="\${val===0?'':fmt(val)}" placeholder="-"/></td>\`; }
+
+function render(){
+  const may60p=MAY_TOTAL['60p'], apr60p=APR_TOTAL['60p'];
+  let h='';
+  h+=\`<tr class="total-row"><td class="name">Total amount ($)</td><td>\${fmt(MAY_TOTAL.cur)}</td><td>\${fmt(MAY_TOTAL.b30)}</td><td>\${fmt(MAY_TOTAL.b60)}</td><td>\${fmt(MAY_TOTAL.b90)}</td><td>\${fmt(MAY_TOTAL.b90p)}</td><td>\${fmt(may60p)}</td><td>\${fmt(MAY_TOTAL.tot)}</td><td class="div-col">\${fmt(APR_TOTAL.b90)}</td><td>\${fmt(APR_TOTAL.b90p)}</td><td>\${fmt(apr60p)}</td>\${vcTd(MAY_TOTAL.b90p-APR_TOTAL.b90p,' div-col')}\${vcTd(may60p-apr60p)}</tr>\`;
+  h+=\`<tr class="pct-row"><td class="name">% of total</td><td>\${pct(MAY_TOTAL.cur,MAY_TOTAL.tot)}</td><td>\${pct(MAY_TOTAL.b30,MAY_TOTAL.tot)}</td><td>\${pct(MAY_TOTAL.b60,MAY_TOTAL.tot)}</td><td>\${pct(MAY_TOTAL.b90,MAY_TOTAL.tot)}</td><td>\${pct(MAY_TOTAL.b90p,MAY_TOTAL.tot)}</td><td>\${pct(may60p,MAY_TOTAL.tot)}</td><td>100%</td><td class="div-col">\${pct(APR_TOTAL.b90,APR_TOTAL.tot)}</td><td>\${pct(APR_TOTAL.b90p,APR_TOTAL.tot)}</td><td>\${pct(apr60p,APR_TOTAL.tot)}</td><td class="div-col zero">-</td><td class="zero">-</td></tr>\`;
+  h+='<tr class="spacer"><td colspan="13"></td></tr>';
+  const t=calcT15();
+  h+=\`<tr class="total-row"><td class="name">Top 15 customers</td><td>\${fmt(t.cur)}</td><td>\${fmt(t.b30)}</td><td>\${fmt(t.b60)}</td><td>\${fmt(t.b90)}</td><td>\${fmt(t.b90p)}</td><td>\${fmt(t['60p'])}</td><td>\${fmt(t.tot)}</td><td class="div-col">\${fmt(t.ab90)}</td><td>\${fmt(t.ab90p)}</td><td>\${fmt(t['a60p'])}</td>\${vcTd(t.b90p-t.ab90p,' div-col')}\${vcTd(t['60p']-t['a60p'])}</tr>\`;
+  h+=\`<tr class="pct-row"><td class="name">% of total</td><td>\${pct(t.cur,MAY_TOTAL.cur)}</td><td>\${pct(t.b30,MAY_TOTAL.b30)}</td><td>\${pct(t.b60,MAY_TOTAL.b60)}</td><td>\${pct(t.b90,MAY_TOTAL.b90)}</td><td>\${pct(t.b90p,MAY_TOTAL.b90p)}</td><td>\${pct(t['60p'],may60p)}</td><td>\${pct(t.tot,MAY_TOTAL.tot)}</td><td class="div-col">\${pct(t.ab90,APR_TOTAL.b90)}</td><td>\${pct(t.ab90p,APR_TOTAL.b90p)}</td><td>\${pct(t['a60p'],apr60p)}</td><td class="div-col zero">-</td><td class="zero">-</td></tr>\`;
+  RAW.forEach(r=>{
+    const s=state[r.name]; const c60p=s.b90+s.b90p; const ca60p=s.ab90+s.ab90p;
+    const fc=FLAGS[r.name]?' flagged':''; const fi=FLAGS[r.name]?' <span class="flag-icon">&#9888;</span>':'';
+    h+=\`<tr class="cust"><td class="name\${fc}">\${r.name}\${fi}</td>\${editCell(r.name,'cur',s.cur)}\${editCell(r.name,'b30',s.b30)}\${editCell(r.name,'b60',s.b60)}\${editCell(r.name,'b90',s.b90)}\${editCell(r.name,'b90p',s.b90p)}<td class="\${fc}">\${fmt(c60p)}</td><td class="\${fc}">\${fmt(s.tot)}</td><td class="div-col\${fc}">\${fmt(s.ab90)}</td><td class="\${fc}">\${fmt(s.ab90p)}</td><td class="\${fc}">\${fmt(ca60p)}</td>\${vcTd(s.b90p-s.ab90p,' div-col')}\${vcTd(c60p-ca60p)}</tr>\`;
+  });
+  document.getElementById('tb').innerHTML=h;
+  document.querySelectorAll('input.cell-edit').forEach(inp=>{
+    inp.addEventListener('change',function(){ const v=parseInput(this.value); if(v!==null){ state[this.dataset.name][this.dataset.field]=v; document.getElementById('recalc-note').style.display='block'; render(); } });
+  });
+}
+
+render();
+
+async function copyTableAsImage(){
+  const btn=document.getElementById('btn-copy'),label=document.getElementById('copy-label');
+  label.textContent='Capturing...'; btn.disabled=true;
+  try{
+    const canvas=await html2canvas(document.querySelector('table'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,ignoreElements:el=>el.classList.contains('btn-copy')||el.classList.contains('btn-freeze')});
+    if(navigator.clipboard&&window.ClipboardItem){
+      canvas.toBlob(async blob=>{ try{ await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]); btn.classList.add('success'); label.textContent='✓ Copied! Paste in PowerPoint'; setTimeout(()=>{ btn.classList.remove('success'); label.textContent='Copy as image'; btn.disabled=false; },3000); }catch(e){ downloadFallback(canvas,btn,label); } },'image/png');
+    } else { downloadFallback(canvas,btn,label); }
+  }catch(e){ btn.classList.add('error'); label.textContent='Error — try again'; setTimeout(()=>{ btn.classList.remove('error'); label.textContent='Copy as image'; btn.disabled=false; },3000); }
+}
+function downloadFallback(canvas,btn,label){ const a=document.createElement('a'); a.download='${esc(outName.replace('.html','.png'))}'; a.href=canvas.toDataURL('image/png'); a.click(); btn.classList.add('success'); label.textContent='✓ Downloaded as PNG'; setTimeout(()=>{ btn.classList.remove('success'); label.textContent='Copy as image'; btn.disabled=false; },3000); }
+
+async function downloadTableAsImage(){
+  const btn=document.getElementById('btn-dl-png'),label=document.getElementById('dl-png-label');
+  label.textContent='Capturing...'; btn.disabled=true;
+  try{
+    const canvas=await html2canvas(document.querySelector('table'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,ignoreElements:el=>el.classList.contains('btn-copy')||el.classList.contains('btn-freeze')});
+    const a=document.createElement('a'); a.download='${esc(outName.replace('.html','.png'))}'; a.href=canvas.toDataURL('image/png'); a.click();
+    btn.classList.add('success'); label.textContent='✓ Downloaded!';
+    setTimeout(()=>{ btn.classList.remove('success'); label.textContent='Download PNG'; btn.disabled=false; },3000);
+  }catch(e){ btn.classList.add('error'); label.textContent='Error — try again'; setTimeout(()=>{ btn.classList.remove('error'); label.textContent='Download PNG'; btn.disabled=false; },3000); }
+}
+
+let frozen=false;
+function toggleFreeze(){ frozen=!frozen; const btn=document.getElementById('btn-freeze'),label=document.getElementById('freeze-label'),icon=document.getElementById('freeze-icon'); if(frozen){ document.body.classList.add('frozen'); btn.classList.add('locked'); label.textContent='Unlock report'; icon.innerHTML='<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>'; }else{ document.body.classList.remove('frozen'); btn.classList.remove('locked'); label.textContent='Lock report'; icon.innerHTML='<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'; } }
+<\/script></body></html>`;
+}
+
 // ── Init ─────────────────────────────────────────────────────
 async function init(){
   const token = getToken();
@@ -1402,4 +1893,4 @@ init();
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 </script>
 </body>
-</html> 
+</html>
