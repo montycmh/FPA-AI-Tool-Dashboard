@@ -425,21 +425,25 @@ const DEFAULTS = [
     }
   },
   {
-    id:'opex', builtin:true, platform:'glean', section:'Glean',
+    id:'opex', builtin:true, platform:'custom', section:'Custom',
     name:'OPEX Review Board',
-    tag:'Glean · Month-End Close',
+    tag:'Custom · Month-End Close',
     tagIcon:'ti-table',
-    desc:'Reads OPEX and GL files to build an HTML review board that flags new entries, reclass candidates, and missing actuals.',
+    desc:'Browser-based OPEX review board with uploads, recommendations, manual overrides, and export.',
     meta:['OPEX Input + GL Summary','Flags new · review · missing','HTML output'],
     metaIcons:['ti-file-spreadsheet','ti-flag','ti-code'],
-    link:'https://app.glean.com/chat/29c998a7a78b43a88eb21ed47afe3560',
-    btnLabel:'OPEX Review Board · Glean',
-    instructions:'Load the files — reads the OPEX file and the GL file.\nReview the latest month — checks the latest actual month vs. prior months.\nFlag important items — marks rows as new, review, or missing.\nCheck vendor history — suggests a Department and GL when possible.\nCreate the board — builds an HTML board in English.',
+    link:'./opex-review-board/',
+    btnLabel:'Open OPEX Review Board',
+    instructions:'Load the files.
+Review the latest month.
+Flag new, review, and missing rows.
+Apply or override Department and GL.
+Export reclasses and missing accrual items.',
     notes:'Comp and Benefits is always excluded.',
     extras:{
       chips:['OPEX Input file','GL Transaction Summary'],
       outputChips:['opex_review_board.html'],
-      canDo:['Review the flagged rows.','Apply reclass suggestions.','Export reclass and missing accrual items.']
+      canDo:['Review the flagged rows.','Apply reclass suggestions.','Override Department and GL manually.','Export reclass and missing accrual items.']
     }
   }
 ];
@@ -824,7 +828,7 @@ function selectIcon(ic){
 const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
 const GIST_FILE = 'fpa_tools.json';
 const TOKEN_KEY = 'fpa_gh_token';
-const SK        = 'fpa_tools_v4';
+const SK = 'fpa_tools_v5';
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY)||''; }
 function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
