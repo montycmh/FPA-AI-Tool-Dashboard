@@ -913,9 +913,13 @@ async function submitToken(){
 
   const gistData = await gistRead();
   if(gistData){
-    saveTools(gistData);
+    // Only restore custom (non-builtin) tools from Gist — always use fresh DEFAULTS for builtins
+    const customTools = gistData.filter(t => !t.builtin);
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...customTools];
+    saveTools(merged);
+    // Update Gist with merged data so it stays in sync
+    gistWrite(merged);
   } else {
-    // Token may be wrong or Gist empty — seed with defaults
     saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
   }
 
@@ -1881,8 +1885,14 @@ async function init(){
     return;
   }
   const gistData = await gistRead();
-  if(gistData){ saveTools(gistData); }
-  else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
+  if(gistData){
+    const customTools = gistData.filter(t => !t.builtin);
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...customTools];
+    saveTools(merged);
+    gistWrite(merged);
+  } else if(!localStorage.getItem(SK)){
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+  }
   renderSidebar();
   renderDeadlines();
   processRecurringEvents();
