@@ -579,7 +579,7 @@ function renderPanel(t){
       html += `<div class="card">
         <div class="section-label">Open</div>
         <div class="open-group">
-          <a class="open-btn" href="${esc(t.link)}" target="_blank">
+          <a class="open-btn" href="${esc(t.link)}" ${t.id==='opex' ? "" : "target=\"_blank\" rel=\"noopener noreferrer\""}>
             <i class="ti ${platformIcon(t.platform)} lead"></i>${esc(t.btnLabel||t.name)}<i class="ti ti-arrow-up-right arrow"></i>
           </a>
         </div>
