@@ -949,7 +949,9 @@ async function submitToken(){
   const gistData = await gistRead();
   if(gistData){
     const customTools = gistData.filter(t => !t.builtin);
-    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...customTools];
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
     saveTools(merged);
     gistWrite(merged);
   } else {
@@ -2742,7 +2744,9 @@ async function init(){
   const gistData = await gistRead();
   if(gistData){
     const customTools = gistData.filter(t => !t.builtin);
-    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...customTools];
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
     saveTools(merged);
     gistWrite(merged);
   } else if(!localStorage.getItem(SK)){
