@@ -571,6 +571,7 @@ function renderPanel(t){
       </div>
     </div>`;
   }
+  const hasLink  = !t.isGenerator && t.link && t.link.trim();
   const hasChips = ex.chips && ex.chips.length;
   if(hasLink || hasChips){
     html += `<div class="cards-2">`;
@@ -1071,7 +1072,9 @@ function urgencyBorder(ms){
 // ── Today's panel ────────────────────────────────────────────
 function renderDeadlines(){
   const list  = document.getElementById('deadlines-list');
+  if(!list) return;
   const empty = document.getElementById('dl-empty');
+  if(!empty) return;
   const all   = loadDeadlines();
   const today = all.filter(d => !d.archived && isToday(d.datetime))
                    .sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
