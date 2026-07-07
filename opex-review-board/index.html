@@ -180,6 +180,34 @@
       align-items: start;
       justify-items: end;
     }
+    .back-link {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      background: var(--artifact-topbar-text);
+      color: var(--artifact-topbar);
+      border: 1px solid color-mix(in srgb, var(--artifact-topbar-text) 22%, transparent);
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--artifact-topbar-text) 16%, transparent);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1;
+      transition: transform .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+    .back-link:hover {
+      transform: translateY(-1px);
+      background: var(--artifact-accent-strong);
+      color: var(--artifact-topbar-text);
+      border-color: var(--artifact-accent-strong);
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--artifact-accent-strong) 28%, transparent);
+    }
+    .back-link:focus-visible {
+      outline: 2px solid var(--artifact-accent-soft);
+      outline-offset: 2px;
+    }
     .button,
     .secondary-button,
     .ghost-button {
@@ -693,7 +721,7 @@
         </button>
       </div>
       <div class="topbar-actions">
-        <a class="back-link" href="../">← Back to Launchpad</a>
+        <a class="back-link" href="../" aria-label="Back to Launchpad" title="Back to Launchpad">&#8592;</a>
         <button class="ghost-button" id="print-board" type="button">Print / Save as PDF</button>
         <div class="status-block">
           <span class="label">Last Actual Loaded</span>
