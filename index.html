@@ -477,6 +477,7 @@ const DEFAULTS = [
     meta:['OPEX Input + GL Summary','Flags new · review · missing','HTML output'],
     metaIcons:['ti-file-spreadsheet','ti-flag','ti-code'],
     link:'./opex-review-board/',
+    sameTab: true,
     btnLabel:'Open OPEX Review Board',
     instructions:'Load the files.\nReview the latest month.\nFlag new, review, and missing rows.\nApply or override Department and GL.\nExport reclasses and missing accrual items.',
     notes:'Comp and Benefits is always excluded.',
@@ -508,16 +509,6 @@ const DEFAULTS = [
     }
   }
 ];
-
-// ── Storage ──────────────────────────────────────────────────
-function loadTools(){
-  try {
-    const stored = JSON.parse(localStorage.getItem(SK));
-    if(stored && stored.length) return stored;
-  } catch(e){}
-  return JSON.parse(JSON.stringify(DEFAULTS));
-}
-function saveTools(t){ localStorage.setItem(SK, JSON.stringify(t)); }
 
 // ── Helpers ──────────────────────────────────────────────────
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -702,7 +693,7 @@ function renderPanel(t){
       html += `<div class="card">
         <div class="section-label">Open</div>
         <div class="open-group">
-          <a class="open-btn" href="${esc(t.link)}" ${t.id==='opex' ? '' : 'target="_blank" rel="noopener noreferrer"'}>
+          <a class="open-btn" href="${esc(t.link)}" ${t.sameTab ? '' : 'target="_blank" rel="noopener noreferrer"'}>
             <i class="ti ${platformIcon(t.platform)} lead"></i>${esc(t.btnLabel||t.name)}<i class="ti ti-arrow-up-right arrow"></i>
           </a>
         </div>
@@ -948,7 +939,7 @@ function selectIcon(ic){
 const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
 const GIST_FILE = 'fpa_tools.json';
 const TOKEN_KEY = 'fpa_gh_token';
-const SK        = 'fpa_tools_v7';
+const SK        = 'fpa_tools_v8';
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY)||''; }
 function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -983,17 +974,38 @@ async function gistWrite(tools){
 }
 
 // ── Storage (Gist + localStorage fallback) ───────────────────
+const BUILTIN_IDS = new Set(DEFAULTS.map(d => d.id));
+const BUILTIN_NAMES = new Set(
+  DEFAULTS.map(d => (d.name || '').trim().toLowerCase())
+);
+
+function mergeToolsWithDefaults(inputTools){
+  const customOnly = (Array.isArray(inputTools) ? inputTools : [])
+    .filter(t => t && !t.builtin)
+    .filter(t => !BUILTIN_IDS.has(t.id))
+    .filter(t => !BUILTIN_NAMES.has((t.name || '').trim().toLowerCase()));
+
+  return [...JSON.parse(JSON.stringify(DEFAULTS)), ...customOnly];
+}
+
 function loadTools(){
   try {
     const stored = JSON.parse(localStorage.getItem(SK));
-    if(stored && stored.length) return stored;
+    if(stored && stored.length){
+      const normalized = mergeToolsWithDefaults(stored);
+      localStorage.setItem(SK, JSON.stringify(normalized));
+      return normalized;
+    }
   } catch(e){}
-  return JSON.parse(JSON.stringify(DEFAULTS));
+  const fresh = JSON.parse(JSON.stringify(DEFAULTS));
+  localStorage.setItem(SK, JSON.stringify(fresh));
+  return fresh;
 }
 function saveTools(t){
-  localStorage.setItem(SK, JSON.stringify(t));
+  const merged = mergeToolsWithDefaults(t);
+  localStorage.setItem(SK, JSON.stringify(merged));
   // Only sync custom (non-builtin) tools to Gist — never write builtins
-  const customOnly = t.filter(x => !x.builtin);
+  const customOnly = merged.filter(x => !x.builtin);
   gistWrite(customOnly);
 }
 
@@ -1033,20 +1045,16 @@ async function submitToken(){
   if(!val){ alert('Please enter a token.'); return; }
   setToken(val);
 
-  // Try to load from Gist
   const btn = document.querySelector('#token-overlay button');
-  btn.textContent = 'Loading...'; btn.disabled = true;
+  btn.textContent = 'Loading...';
+  btn.disabled = true;
 
   const gistData = await gistRead();
+
   if(gistData){
-    const customTools = gistData.filter(t => !t.builtin);
-    const builtinIds = new Set(DEFAULTS.map(d => d.id));
-    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
-    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
-    saveTools(merged);
-    gistWrite(merged);
+    saveTools(gistData);
   } else {
-    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+    loadTools();
   }
 
   document.getElementById('token-overlay').remove();
@@ -1054,7 +1062,10 @@ async function submitToken(){
   renderDeadlines();
   requestNotifPermission();
   if(!dlTimer) dlTimer = setInterval(tickDeadlines, 1000);
-  if(!popupTimer){ popupTimer = setInterval(checkPopups, 2*60*60*1000); setTimeout(checkPopups,3000); }
+  if(!popupTimer){
+    popupTimer = setInterval(checkPopups, 2*60*60*1000);
+    setTimeout(checkPopups,3000);
+  }
 }
 
 // ── Download ─────────────────────────────────────────────────
@@ -3129,22 +3140,18 @@ async function init(){
     showTokenPrompt();
     renderDeadlines();
     dlTimer = setInterval(tickDeadlines, 1000);
-    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000); // every 2 hours
-    setTimeout(checkPopups, 3000); // first check after 3s
+    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000);
+    setTimeout(checkPopups, 3000);
     return;
   }
+
   const gistData = await gistRead();
   if(gistData){
-    const customTools = gistData.filter(t => !t.builtin);
-    const builtinIds = new Set(DEFAULTS.map(d => d.id));
-    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
-    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
-    saveTools(merged);
-    gistWrite(merged);
-  } else if(!localStorage.getItem(SK)){
-    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
+    saveTools(gistData);
+  } else {
+    loadTools();
   }
-  else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
+
   renderSidebar();
   renderDeadlines();
   processRecurringEvents();
