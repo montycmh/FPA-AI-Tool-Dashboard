@@ -477,7 +477,6 @@ const DEFAULTS = [
     meta:['OPEX Input + GL Summary','Flags new · review · missing','HTML output'],
     metaIcons:['ti-file-spreadsheet','ti-flag','ti-code'],
     link:'./opex-review-board/',
-    sameTab: true,
     btnLabel:'Open OPEX Review Board',
     instructions:'Load the files.\nReview the latest month.\nFlag new, review, and missing rows.\nApply or override Department and GL.\nExport reclasses and missing accrual items.',
     notes:'Comp and Benefits is always excluded.',
@@ -509,6 +508,16 @@ const DEFAULTS = [
     }
   }
 ];
+
+// ── Storage ──────────────────────────────────────────────────
+function loadTools(){
+  try {
+    const stored = JSON.parse(localStorage.getItem(SK));
+    if(stored && stored.length) return stored;
+  } catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function saveTools(t){ localStorage.setItem(SK, JSON.stringify(t)); }
 
 // ── Helpers ──────────────────────────────────────────────────
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -693,7 +702,7 @@ function renderPanel(t){
       html += `<div class="card">
         <div class="section-label">Open</div>
         <div class="open-group">
-          <a class="open-btn" href="${esc(t.link)}" ${t.sameTab ? '' : 'target="_blank" rel="noopener noreferrer"'}>
+          <a class="open-btn" href="${esc(t.link)}" ${t.id==='opex' ? '' : 'target="_blank" rel="noopener noreferrer"'}>
             <i class="ti ${platformIcon(t.platform)} lead"></i>${esc(t.btnLabel||t.name)}<i class="ti ti-arrow-up-right arrow"></i>
           </a>
         </div>
@@ -939,7 +948,7 @@ function selectIcon(ic){
 const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
 const GIST_FILE = 'fpa_tools.json';
 const TOKEN_KEY = 'fpa_gh_token';
-const SK        = 'fpa_tools_v8';
+const SK        = 'fpa_tools_v7';
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY)||''; }
 function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -974,38 +983,17 @@ async function gistWrite(tools){
 }
 
 // ── Storage (Gist + localStorage fallback) ───────────────────
-const BUILTIN_IDS = new Set(DEFAULTS.map(d => d.id));
-const BUILTIN_NAMES = new Set(
-  DEFAULTS.map(d => (d.name || '').trim().toLowerCase())
-);
-
-function mergeToolsWithDefaults(inputTools){
-  const customOnly = (Array.isArray(inputTools) ? inputTools : [])
-    .filter(t => t && !t.builtin)
-    .filter(t => !BUILTIN_IDS.has(t.id))
-    .filter(t => !BUILTIN_NAMES.has((t.name || '').trim().toLowerCase()));
-
-  return [...JSON.parse(JSON.stringify(DEFAULTS)), ...customOnly];
-}
-
 function loadTools(){
   try {
     const stored = JSON.parse(localStorage.getItem(SK));
-    if(stored && stored.length){
-      const normalized = mergeToolsWithDefaults(stored);
-      localStorage.setItem(SK, JSON.stringify(normalized));
-      return normalized;
-    }
+    if(stored && stored.length) return stored;
   } catch(e){}
-  const fresh = JSON.parse(JSON.stringify(DEFAULTS));
-  localStorage.setItem(SK, JSON.stringify(fresh));
-  return fresh;
+  return JSON.parse(JSON.stringify(DEFAULTS));
 }
 function saveTools(t){
-  const merged = mergeToolsWithDefaults(t);
-  localStorage.setItem(SK, JSON.stringify(merged));
+  localStorage.setItem(SK, JSON.stringify(t));
   // Only sync custom (non-builtin) tools to Gist — never write builtins
-  const customOnly = merged.filter(x => !x.builtin);
+  const customOnly = t.filter(x => !x.builtin);
   gistWrite(customOnly);
 }
 
@@ -1045,16 +1033,20 @@ async function submitToken(){
   if(!val){ alert('Please enter a token.'); return; }
   setToken(val);
 
+  // Try to load from Gist
   const btn = document.querySelector('#token-overlay button');
-  btn.textContent = 'Loading...';
-  btn.disabled = true;
+  btn.textContent = 'Loading...'; btn.disabled = true;
 
   const gistData = await gistRead();
-
   if(gistData){
-    saveTools(gistData);
+    const customTools = gistData.filter(t => !t.builtin);
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
+    saveTools(merged);
+    gistWrite(merged);
   } else {
-    loadTools();
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
   }
 
   document.getElementById('token-overlay').remove();
@@ -1062,10 +1054,7 @@ async function submitToken(){
   renderDeadlines();
   requestNotifPermission();
   if(!dlTimer) dlTimer = setInterval(tickDeadlines, 1000);
-  if(!popupTimer){
-    popupTimer = setInterval(checkPopups, 2*60*60*1000);
-    setTimeout(checkPopups,3000);
-  }
+  if(!popupTimer){ popupTimer = setInterval(checkPopups, 2*60*60*1000); setTimeout(checkPopups,3000); }
 }
 
 // ── Download ─────────────────────────────────────────────────
@@ -2743,7 +2732,8 @@ function hcaSetFile(file){
   btn.style.cursor = 'pointer';
 }
 
-async function hcaGenerateReport(){
+async 
+function hcaGenerateReport(){
   const btn = document.getElementById('hca-generate-btn');
   btn.textContent = 'Processing...';
   btn.disabled = true;
@@ -2754,136 +2744,122 @@ async function hcaGenerateReport(){
     }
 
     const fname = hcaFile.name;
-    // Pattern: HC_Actuals_by_function_MmmYY.xlsx
     const m = fname.match(/HC_Actuals_by_function_([A-Za-z]+)(\d{2})\.xlsx$/i);
     if(!m) throw new Error(`Filename "${fname}" doesn't match HC_Actuals_by_function_MmmYY.xlsx`);
 
     const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const monStr = m[1]; const yr2 = parseInt(m[2]); const yr = 2000 + yr2;
+    const monStr = m[1];
+    const yr2 = parseInt(m[2], 10);
+    const yr = 2000 + yr2;
     const monIdx = MONTH_NAMES.findIndex(x=>x.toLowerCase()===monStr.slice(0,3).toLowerCase());
-    if(monIdx<0) throw new Error(`Cannot parse month "${monStr}"`);
+    if(monIdx < 0) throw new Error(`Cannot parse month "${monStr}"`);
 
-    // Month 4 = current; Months 1-3 = three prior calendar months
     function priorMonth(baseIdx, baseYr, offset){
-      let idx = baseIdx - offset; let y = baseYr;
+      let idx = baseIdx - offset;
+      let y = baseYr;
       while(idx < 0){ idx += 12; y--; }
       return { name: MONTH_NAMES[idx], yr: y, label: `${MONTH_NAMES[idx]} ${String(y).slice(2)}` };
     }
+
     const M4 = { name: MONTH_NAMES[monIdx], yr, label: `${MONTH_NAMES[monIdx]} ${yr2}` };
     const M3 = priorMonth(monIdx, yr, 1);
     const M2 = priorMonth(monIdx, yr, 2);
     const M1 = priorMonth(monIdx, yr, 3);
     const months = [M1, M2, M3, M4];
 
-    // Read workbook
     const wb = await new Promise((res,rej)=>{
       const reader = new FileReader();
-      reader.onload = e=>{ try{ res(XLSX.read(new Uint8Array(e.target.result),{type:'array'})); }catch(err){ rej(err); } };
-      reader.onerror = rej; reader.readAsArrayBuffer(hcaFile);
+      reader.onload = e=>{ try{ res(XLSX.read(new Uint8Array(e.target.result), { type:'array' })); }catch(err){ rej(err); } };
+      reader.onerror = rej;
+      reader.readAsArrayBuffer(hcaFile);
     });
 
-    // Read Mapping tab: col A = BU, col B = dept ID
     const mappingSheet = wb.Sheets['Mapping'] || wb.Sheets[wb.SheetNames[1]];
     if(!mappingSheet) throw new Error('Mapping sheet not found');
-    const mappingRaw = XLSX.utils.sheet_to_json(mappingSheet, {header:1, defval:''});
+    const mappingRaw = XLSX.utils.sheet_to_json(mappingSheet, { header:1, defval:'' });
     const deptToBU = {};
-    mappingRaw.slice(1).forEach(row=>{
-      const bu = String(row[0]||'').trim();
-      const deptId = String(row[1]||'').trim();
+    mappingRaw.slice(1).forEach(row => {
+      const bu = String(row[0] || '').trim();
+      const deptId = String(row[1] || '').trim();
       if(bu && deptId) deptToBU[deptId] = bu;
     });
 
-    // Read sheet1
     const sheet1 = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(sheet1, {header:1, defval:null});
+    const raw = XLSX.utils.sheet_to_json(sheet1, { header:1, defval:null });
 
-    // Find header row — scan for month labels to get column indices
-    let headerRowIdx = -1, colMap = {};
-    for(let i=0; i<Math.min(20,raw.length); i++){
-      const row = raw[i];
+    function norm(v){ return String(v || '').replace(/\s+/g,'').toLowerCase(); }
+    let colMap = {};
+    let headerRowIdx = -1;
+
+    for(let i=0; i<Math.min(25, raw.length); i++){
+      const row = raw[i] || [];
       let found = 0;
-      months.forEach(mo=>{
-        const ci = row.findIndex(c=> c && String(c).trim().toLowerCase().replace(' ','') === (mo.name.toLowerCase()+mo.yr));
-        if(ci>=0){ colMap[mo.label] = ci; found++; }
-      });
-      if(found >= 2){ headerRowIdx = i; break; }
-    }
-    // Fallback: try matching just "May 26" style
-    if(headerRowIdx < 0){
-      for(let i=0; i<Math.min(20,raw.length); i++){
-        const row = raw[i];
-        let found = 0;
-        months.forEach(mo=>{
-          const target = mo.name + ' ' + String(mo.yr).slice(2);
-          const ci = row.findIndex(c=> c && String(c).trim() === target);
-          if(ci>=0){ colMap[mo.label] = ci; found++; }
+      months.forEach(mo => {
+        const targetA = `${mo.name.toLowerCase()}${mo.yr}`;
+        const targetB = `${mo.name.toLowerCase()}${String(mo.yr).slice(2)}`;
+        const ci = row.findIndex(c => {
+          const n = norm(c);
+          return n === targetA || n === targetB;
         });
-        if(found >= 2){ headerRowIdx = i; break; }
-      }
+        if(ci >= 0){ colMap[mo.label] = ci; found++; }
+      });
+      if(found >= 3){ headerRowIdx = i; break; }
     }
-    if(headerRowIdx < 0) throw new Error('Could not find month headers in sheet1. Check that the file has the expected column headers.');
 
-    // Determine Movement columns (New Hires, Attrition, Transfer In/Out) — same header row
-    const hRow = raw[headerRowIdx];
-    let colNew=-1, colAtt=-1, colTIn=-1, colTOut=-1;
-    // Will be determined per-section below
+    if(headerRowIdx < 0) throw new Error('Could not find month headers in sheet1.');
 
-    // Parse data sections
     const SECTIONS = ['Headcount (w/Attrition)','New Hires','CMH - Actual Termination','Transfer In','Transfer Out'];
-    const buData = {}; // bu -> {hc:{M1:0,...}, new:0, att:0, trans:0}
+    const buData = {};
 
-    function ensureBU(bu){
-      if(!buData[bu]) buData[bu] = { hc:{[M1.label]:0,[M2.label]:0,[M3.label]:0,[M4.label]:0}, new:0, att:0, trans:0 };
+    function blankBU(){
+      return { hc:{ [M1.label]:0, [M2.label]:0, [M3.label]:0, [M4.label]:0 }, new:0, att:0, trans:0 };
+    }
+    function ensureBU(bu){ if(!buData[bu]) buData[bu] = blankBU(); }
+    function toInt(v){
+      if(v === null || v === undefined || v === '') return 0;
+      if(typeof v === 'number') return Math.round(v);
+      const s = String(v).replace(/,/g,'').trim();
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : Math.round(n);
     }
 
     let currentSection = null;
-    // Find movement col indices by looking for section header rows and their data columns
-    // We'll track section column by looking for the M4 column in context
     const m4Col = colMap[M4.label];
 
-    // Re-scan: find section headers and read rows beneath them
     for(let i=0; i<raw.length; i++){
-      const row = raw[i];
-      if(!row) continue;
-      const cell0 = row[0] !== null && row[0] !== undefined ? String(row[0]).trim() : null;
-      const cell1 = row[1] !== null && row[1] !== undefined ? String(row[1]).trim() : null;
+      const row = raw[i] || [];
+      const cell0 = row[0] !== null && row[0] !== undefined ? String(row[0]).trim() : '';
+      const cell1 = row[1] !== null && row[1] !== undefined ? String(row[1]).trim() : '';
 
       if(cell0 && SECTIONS.includes(cell0)){
         currentSection = cell0;
-        // When we hit a new section header, try to find the movement column for this section
-        // Movement column = col with M4 data for that section (same as M4 col or might differ)
         continue;
       }
-
-      if(!currentSection) continue;
-      if(!cell1) continue; // no dept ID
+      if(!currentSection || !cell1) continue;
 
       const deptId = cell1;
       const bu = deptToBU[deptId];
       if(!bu) continue;
       ensureBU(bu);
 
-      const toInt = v => (v===null||v===undefined||v==='')?0:Math.round(parseFloat(String(v).replace(/,/g,''))||0);
-
       if(currentSection === 'Headcount (w/Attrition)'){
-        months.forEach(mo=>{
+        months.forEach(mo => {
           const ci = colMap[mo.label];
           if(ci !== undefined) buData[bu].hc[mo.label] += toInt(row[ci]);
         });
       } else if(currentSection === 'New Hires'){
-        if(m4Col !== undefined) buData[bu].new += toInt(row[m4Col]);
+        if(m4Col !== undefined) buData[bu].new += Math.abs(toInt(row[m4Col]));
       } else if(currentSection === 'CMH - Actual Termination'){
-        if(m4Col !== undefined) buData[bu].att += toInt(row[m4Col]);
+        if(m4Col !== undefined) buData[bu].att -= Math.abs(toInt(row[m4Col]));
       } else if(currentSection === 'Transfer In'){
-        if(m4Col !== undefined) buData[bu].trans += toInt(row[m4Col]);
+        if(m4Col !== undefined) buData[bu].trans += Math.abs(toInt(row[m4Col]));
       } else if(currentSection === 'Transfer Out'){
-        if(m4Col !== undefined) buData[bu].trans += toInt(row[m4Col]);
+        if(m4Col !== undefined) buData[bu].trans -= Math.abs(toInt(row[m4Col]));
       }
     }
 
-    // Build the HTML
-    const html = hcaBuildHTML({buData, months, M4, fname});
-    const win = window.open('','_blank');
+    const html = hcaBuildHTML({ buData, months, M4 });
+    const win = window.open('', '_blank');
     win.document.write(html);
     win.document.close();
 
@@ -2898,240 +2874,347 @@ async function hcaGenerateReport(){
   btn.style.color = '#fff';
 }
 
-function hcaBuildHTML({buData, months, M4, fname}){
-  const [M1,M2,M3] = months;
-  const ML = months.map(m=>m.label);
+function hcaBuildHTML({ buData, months, M4 }){
+  const ML = months.map(m => m.label);
 
-  function sumGroup(members){
-    const out = {hc:{[ML[0]]:0,[ML[1]]:0,[ML[2]]:0,[ML[3]]:0},new:0,att:0,trans:0};
-    members.forEach(bu=>{
-      const d = buData[bu];
-      if(!d) return;
-      ML.forEach(m=>out.hc[m]+=d.hc[m]||0);
-      out.new+=d.new||0; out.att+=d.att||0; out.trans+=d.trans||0;
-    });
-    return out;
+  function getBU(name){
+    const d = buData[name] || { hc:{}, new:0, att:0, trans:0 };
+    return {
+      hc: [d.hc[ML[0]] || 0, d.hc[ML[1]] || 0, d.hc[ML[2]] || 0, d.hc[ML[3]] || 0],
+      new: d.new || 0,
+      att: d.att || 0,
+      trans: d.trans || 0
+    };
   }
 
-  // Leaf BUs (read directly from buData, treat as single group)
-  function leafBU(bu){
-    if(!buData[bu]) return {hc:{[ML[0]]:0,[ML[1]]:0,[ML[2]]:0,[ML[3]]:0},new:0,att:0,trans:0};
-    const d = buData[bu];
-    return {hc:{...d.hc},new:d.new||0,att:d.att||0,trans:d.trans||0};
-  }
+  const BU = {
+    'Analytics Services':   getBU('Analytics Services'),
+    'BAP Researchers':      getBU('BAP Researchers'),
+    'Comm Strat & Rev Ops': getBU('Comm Strat & Rev Ops'),
+    'Customer Support':     getBU('Customer Support'),
+    'Data Products':        getBU('Data Products'),
+    'Data Strategy':        getBU('Data Strategy'),
+    'Engineering':          getBU('Engineering'),
+    'Executive Operations': getBU('Executive Operations'),
+    'FAST':                 getBU('FAST'),
+    'Finance':              getBU('Finance'),
+    'IT':                   getBU('IT'),
+    'LT':                   getBU('LT'),
+    'Lab':                  getBU('Lab'),
+    'Legal':                getBU('Legal'),
+    'People':               getBU('People'),
+    'Product':              getBU('Product'),
+    'Retention':            getBU('Retention'),
+    'Sales':                getBU('Sales'),
+    'Sales Development':    getBU('Sales Development'),
+    'Sales Engineering':    getBU('Sales Engineering'),
+    'Tech Solutions':       getBU('Tech Solutions'),
+    'Total Marketing':      getBU('Total Marketing'),
+    'Total Mavens':         getBU('Total Mavens')
+  };
 
-  const T = {};
-  T['Engineering']          = leafBU('Engineering');
-  T['Tech Solutions']       = leafBU('Tech Solutions');
-  T['Lab']                  = leafBU('Lab');
-  T['BAP Researchers']      = leafBU('BAP Researchers');
-  T['Data Products']        = leafBU('Data Products');
-  T['Data Strategy']        = leafBU('Data Strategy');
-  T['Product']              = leafBU('Product');
-  T['LT']                   = leafBU('LT');
-  T['Comm Strat & Rev Ops'] = leafBU('Comm Strat & Rev Ops');
-  T['Sales Engineering']    = leafBU('Sales Engineering');
-  T['Customer Support']     = leafBU('Customer Support');
-  T['Analytics Services']   = leafBU('Analytics Services');
-  T['FAST']                 = leafBU('FAST');
-  T['Sales Development']    = leafBU('Sales Development');
-  T['Retention']            = leafBU('Retention');
-  T['Sales']                = leafBU('Sales');
-  T['Finance']              = leafBU('Finance');
-  T['People']               = leafBU('People');
-  T['Legal']                = leafBU('Legal');
-  T['Executive Operations'] = leafBU('Executive Operations');
-  T['IT']                   = leafBU('IT');
-  T['Total Mavens']         = leafBU('Total Mavens');
-  T['Total Marketing']      = leafBU('Total Marketing');
+  const GROUPS = [
+    { label:'Total Dev Org', cls:'subtotal', members:['Engineering','Tech Solutions','Lab'] },
+    { label:'Total Data Product', cls:'subtotal', members:['BAP Researchers','Data Products','Data Strategy','Product'] },
+    {
+      label:'Total Commercial',
+      cls:'subtotal',
+      subgroups:[
+        { label:'Total Ops', cls:'subtotal-light', members:['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development'] },
+        { label:'Total Sales + Retention', cls:'subtotal-light', members:['Retention','Sales'] }
+      ]
+    },
+    { label:'Total Mavens', cls:'subtotal', members:['Total Mavens'] },
+    { label:'Total Marketing', cls:'subtotal', members:['Total Marketing'] },
+    { label:'Total G&A', cls:'subtotal', members:['Finance','People','Legal','Executive Operations','IT'] }
+  ];
 
-  T['Total Dev Org']           = sumGroup(['Engineering','Tech Solutions','Lab']);
-  T['Total Data Product']      = sumGroup(['BAP Researchers','Data Products','Data Strategy','Product']);
-  T['Total Ops']               = sumGroup(['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development']);
-  T['Total Sales + Retention'] = sumGroup(['Retention','Sales']);
-  T['Total Commercial']        = sumGroup(['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development','Retention','Sales']);
-  T['Total G&A']               = sumGroup(['Finance','People','Legal','Executive Operations','IT']);
+  const titleMonth = `${M4.name} ${String(M4.yr).slice(2)}`;
+  const outName = `HC_Actuals_${M4.name.toUpperCase()}${String(M4.yr).slice(2)}.html`;
 
-  function getNet(){
-    return sumGroup(['Total Dev Org','Total Data Product','Total Commercial','Total Mavens','Total Marketing','Total G&A'].map(k=>{
-      // use T directly
-      return null;
-    }).filter(Boolean)); // won't work directly — compute manually
-  }
-  // Compute net manually
-  const net = {hc:{[ML[0]]:0,[ML[1]]:0,[ML[2]]:0,[ML[3]]:0},new:0,att:0,trans:0};
-  ['Total Dev Org','Total Data Product','Total Commercial','Total Mavens','Total Marketing','Total G&A'].forEach(k=>{
-    const d=T[k]; ML.forEach(m=>net.hc[m]+=d.hc[m]||0);
-    net.new+=d.new||0; net.att+=d.att||0; net.trans+=d.trans||0;
-  });
-
-  function mov(v, cls){ if(v===0) return '<span class="zero">0</span>'; return `<span class="${cls}">${v}</span>`; }
-
-  function dRow(label, d){
-    return `<tr class="detail"><td>${label}</td>
-      <td>${d.hc[ML[0]]||0}</td><td>${d.hc[ML[1]]||0}</td><td>${d.hc[ML[2]]||0}</td>
-      <td>${mov(d.new||0,'col-new-val')}</td><td>${mov(d.att||0,'col-att-val')}</td><td>${mov(d.trans||0,'col-trans-val')}</td>
-      <td>${d.hc[ML[3]]||0}</td></tr>`;
-  }
-  function sRow(label, d, light){
-    const cls = light?'subtotal-light':'subtotal';
-    return `<tr class="${cls}"><td>${label}</td>
-      <td>${d.hc[ML[0]]||0}</td><td>${d.hc[ML[1]]||0}</td><td>${d.hc[ML[2]]||0}</td>
-      <td>${mov(d.new||0,'col-new-val')}</td><td>${mov(d.att||0,'col-att-val')}</td><td>${mov(d.trans||0,'col-trans-val')}</td>
-      <td>${d.hc[ML[3]]||0}</td></tr>`;
-  }
-  const sp = `<tr class="spacer"><td colspan="8"></td></tr>`;
-
-  let tbody = '';
-  ['Engineering','Tech Solutions','Lab'].forEach(b=>tbody+=dRow(b,T[b]));
-  tbody+=sRow('Total Dev Org',T['Total Dev Org']); tbody+=sp;
-
-  ['BAP Researchers','Data Products','Data Strategy','Product'].forEach(b=>tbody+=dRow(b,T[b]));
-  tbody+=sRow('Total Data Product',T['Total Data Product']); tbody+=sp;
-
-  ['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development'].forEach(b=>tbody+=dRow(b,T[b]));
-  tbody+=sRow('Total Ops',T['Total Ops'],true); tbody+=sp;
-
-  ['Retention','Sales'].forEach(b=>tbody+=dRow(b,T[b]));
-  tbody+=sRow('Total Sales + Retention',T['Total Sales + Retention'],true); tbody+=sp;
-
-  tbody+=sRow('Total Commercial',T['Total Commercial']); tbody+=sp;
-  tbody+=sRow('Total Mavens',T['Total Mavens']); tbody+=sp;
-  tbody+=sRow('Total Marketing',T['Total Marketing']); tbody+=sp;
-
-  ['Finance','People','Legal','Executive Operations','IT'].forEach(b=>tbody+=dRow(b,T[b]));
-  tbody+=sRow('Total G&A',T['Total G&A']); tbody+=sp;
-
-  tbody+=`<tr class="total-net"><td>Total Net FTE Headcount</td>
-    <td>${net.hc[ML[0]]}</td><td>${net.hc[ML[1]]}</td><td>${net.hc[ML[2]]}</td>
-    <td>${mov(net.new,'col-new-val')}</td><td>${mov(net.att,'col-att-val')}</td><td>${mov(net.trans,'col-trans-val')}</td>
-    <td>${net.hc[ML[3]]}</td></tr>`;
-  tbody+=sp;
-
-  tbody+=`<tr class="total-cr"><td>Total Headcount + Costa Rica</td>
-    <td id="tot-m1">${net.hc[ML[0]]}</td><td id="tot-m2">${net.hc[ML[1]]}</td>
-    <td id="tot-m3">${net.hc[ML[2]]}</td>
-    <td id="tot-new">${mov(net.new,'col-new-val')}</td>
-    <td id="tot-att">${mov(net.att,'col-att-val')}</td>
-    <td id="tot-trans">${mov(net.trans,'col-trans-val')}</td>
-    <td id="tot-m4">${net.hc[ML[3]]}</td></tr>`;
-  tbody+=sp;
-
-  const netJSON = JSON.stringify(net);
-  const outName = `HC_Actuals_${M4.name}${String(M4.yr).slice(2)}.html`;
-
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>HC Actuals by Function — ${M4.name} ${String(M4.yr).slice(2)}</title>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Total HC Actuals by Function — ${titleMonth}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Calibri',Arial,sans-serif;background:#f0f2f5;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;}
-.toolbar{width:768px;display:flex;justify-content:flex-end;gap:8px;}
-.btn-copy{display:flex;align-items:center;gap:6px;background:#1e3a5f;color:#ffffff;border:none;border-radius:5px;padding:7px 16px;font-size:11px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s;}
-.btn-copy:hover{background:#274d7a;}.btn-copy:active{background:#152b47;}.btn-copy.copied{background:#15803d;}
-.btn-dl{display:flex;align-items:center;gap:6px;background:#fff;color:#1e3a5f;border:1.5px solid #1e3a5f;border-radius:5px;padding:6px 14px;font-size:11px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s;}
-.btn-dl:hover{background:#e6f1fb;}
-.table-wrapper{width:768px;background:#ffffff;}
-table{width:768px;border-collapse:collapse;font-size:10px;}
-thead th{background:#1e3a5f;color:#ffffff;font-weight:700;font-size:9.5px;padding:5px 8px;text-align:center;white-space:nowrap;border:1px solid #374151;}
-thead th:first-child{text-align:left;width:168px;}
-thead th.col-new{background:#d1d5db;color:#111827;}
-thead th.col-att{background:#d1d5db;color:#111827;}
-thead th.col-trans{background:#d1d5db;color:#111827;}
-tr.detail td{padding:2px 8px;text-align:center;border:1px solid #e5e7eb;color:#111827;background:#ffffff;font-size:10px;}
-tr.detail td:first-child{text-align:left;padding-left:14px;}
-tr.detail:hover td{background:#f9fafb;}
-tr.subtotal td{padding:3px 8px;text-align:center;background:#c8c8c8;font-weight:700;font-size:10px;color:#111827;border:1px solid #9ca3af;}
-tr.subtotal td:first-child{text-align:left;padding-left:6px;}
-tr.subtotal-light td{padding:3px 8px;text-align:center;background:#e9eaeb;font-weight:700;font-size:10px;color:#111827;border:1px solid #c8c8c8;}
-tr.subtotal-light td:first-child{text-align:left;padding-left:6px;}
-tr.total-net td{padding:4px 8px;text-align:center;background:#ffffff;color:#111827;font-weight:700;font-size:10px;border-top:2px solid #1e3a5f;border-bottom:2px solid #1e3a5f;border-left:none;border-right:none;}
-tr.total-net td:first-child{text-align:left;padding-left:6px;border-left:2px solid #1e3a5f;}
-tr.total-net td:last-child{border-right:2px solid #1e3a5f;}
-tr.total-cr td{padding:4px 8px;text-align:center;background:#ffffff;color:#111827;font-weight:700;font-size:10px;border-top:2px solid #1e3a5f;border-bottom:2px solid #1e3a5f;border-left:none;border-right:none;}
-tr.total-cr td:first-child{text-align:left;padding-left:6px;border-left:2px solid #1e3a5f;}
-tr.total-cr td:last-child{border-right:2px solid #1e3a5f;}
-tr.cr-edit td{padding:2px 8px;text-align:center;border:1px solid #e5e7eb;background:#f8fafc;font-size:10px;}
-tr.cr-edit td:first-child{text-align:left;padding-left:14px;color:#6b7280;font-style:italic;}
-tr.spacer td{padding:2px 0;background:#f3f4f6;border:none;}
-.col-new-val{color:#15803d;font-weight:600;}.col-att-val{color:#b91c1c;font-weight:600;}.col-trans-val{color:#1d4ed8;font-weight:600;}
-.zero{color:#d1d5db;}
-input.cr-in{width:100%;text-align:center;background:transparent;border:none;border-bottom:1px dashed #9ca3af;font-size:10px;font-weight:600;font-family:inherit;outline:none;padding:1px 0;color:#111827;}
-input.cr-in:focus{border-bottom-color:#374151;}
-input.cr-in.inp-new{color:#15803d;}input.cr-in.inp-att{color:#b91c1c;}input.cr-in.inp-trans{color:#1d4ed8;}
-</style></head><body>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f0f2f5; font-family: Calibri, Arial, sans-serif; font-size: 10px; padding: 20px; }
+
+  .toolbar {
+    width: 768px; margin: 0 auto 8px auto;
+    display: flex; justify-content: flex-end;
+  }
+  #copyBtn {
+    background: #1e3a5f; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 14px; font-size: 11px; font-family: Calibri, Arial, sans-serif;
+    cursor: pointer; letter-spacing: 0.3px;
+  }
+  #copyBtn:hover { background: #16304f; }
+  #copyBtn.copied { background: #15803d; }
+
+  .table-wrapper { width: 768px; margin: 0 auto; }
+
+  table {
+    width: 768px; border-collapse: collapse;
+    font-family: Calibri, Arial, sans-serif; font-size: 10px;
+  }
+
+  thead th {
+    background: #1e3a5f; color: #fff; font-weight: bold;
+    text-align: center; padding: 4px 5px; font-size: 9.5px;
+    border: 1px solid #16304f;
+  }
+  thead th.col-label { text-align: left; width: 168px; }
+  thead th.col-mov   { background: #d1d5db; color: #111827; }
+
+  tr.detail td {
+    background: #fff; border: 1px solid #e5e7eb;
+    padding: 3px 5px; text-align: center;
+  }
+  tr.detail td.col-label { text-align: left; padding-left: 14px; }
+
+  tr.subtotal td {
+    background: #c8c8c8; border: 1px solid #9ca3af;
+    padding: 3px 5px; text-align: center; font-weight: bold;
+  }
+  tr.subtotal td.col-label { text-align: left; padding-left: 6px; }
+
+  tr.subtotal-light td {
+    background: #e9eaeb; border: 1px solid #9ca3af;
+    padding: 3px 5px; text-align: center; font-weight: bold;
+  }
+  tr.subtotal-light td.col-label { text-align: left; padding-left: 10px; }
+
+  tr.total-net td, tr.total-cr td {
+    background: #fff;
+    padding: 4px 5px; text-align: center; font-weight: bold;
+    border-top: 2px solid #1e3a5f;
+    border-bottom: 2px solid #1e3a5f;
+    border-left: none; border-right: none;
+  }
+  tr.total-net td:first-child, tr.total-cr td:first-child { border-left: 2px solid #1e3a5f; }
+  tr.total-net td:last-child,  tr.total-cr td:last-child  { border-right: 2px solid #1e3a5f; }
+  tr.total-net td.col-label, tr.total-cr td.col-label { text-align: left; padding-left: 6px; }
+
+  tr.cr-edit td {
+    background: #f8fafc; border: 1px solid #e5e7eb;
+    padding: 3px 5px; text-align: center;
+  }
+  tr.cr-edit td.col-label { text-align: left; padding-left: 14px; font-style: italic; }
+  tr.cr-edit input {
+    width: 36px; text-align: center; border: 1px solid #cbd5e1;
+    border-radius: 2px; padding: 1px 2px; font-size: 10px;
+    font-family: Calibri, Arial, sans-serif; background: #fff;
+  }
+
+  tr.spacer td { background: #f3f4f6; height: 4px; border: none; }
+
+  .col-new-val  { color: #15803d; }
+  .col-att-val  { color: #b91c1c; }
+  .col-trans-val{ color: #1d4ed8; }
+  .zero         { color: #d1d5db; }
+</style>
+</head>
+<body>
+
 <div class="toolbar">
-  <button class="btn-dl" onclick="downloadReport()">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Download HTML
-  </button>
-  <button class="btn-copy" id="btn-copy" onclick="copyAsImage()">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-    Copy as Image
-  </button>
+  <button id="copyBtn" onclick="copyAsImage()">Copy as Image</button>
 </div>
+
 <div class="table-wrapper">
 <table id="capture">
-<thead><tr>
-  <th></th>
-  <th>${ML[0]}</th><th>${ML[1]}</th><th>${ML[2]}</th>
-  <th class="col-new">(+) New</th>
-  <th class="col-att">(&minus;) Attrition</th>
-  <th class="col-trans">(+/&minus;) Transfers</th>
-  <th>${ML[3]}</th>
-</tr></thead>
-<tbody id="tbody">${tbody}</tbody>
+<thead>
+  <tr>
+    <th class="col-label">Function</th>
+    <th>${ML[0]}<br>Actual</th>
+    <th>${ML[1]}<br>Actual</th>
+    <th>${ML[2]}<br>Actual</th>
+    <th class="col-mov">(+) New</th>
+    <th class="col-mov">(-) Attrition</th>
+    <th class="col-mov">(+/-) Transfers</th>
+    <th>${ML[3]}<br>Actual</th>
+  </tr>
+</thead>
+<tbody id="main-tbody"></tbody>
 </table>
 </div>
+
 <div class="table-wrapper">
-<table style="width:768px;border-collapse:collapse;font-size:10px;">
+<table id="cr-table">
 <tbody id="cr-tbody"></tbody>
 </table>
 </div>
+
 <script>
-const NET=${netJSON};
-const ML=${JSON.stringify(ML)};
-document.getElementById('cr-tbody').innerHTML=\`<tr class="cr-edit">
-  <td>Costa Rica</td>
-  <td><input class="cr-in" id="cr-m1" type="number" value="0"></td>
-  <td><input class="cr-in" id="cr-m2" type="number" value="0"></td>
-  <td><input class="cr-in" id="cr-m3" type="number" value="0"></td>
-  <td><input class="cr-in inp-new"   id="cr-new"   type="number" value="0"></td>
-  <td><input class="cr-in inp-att"   id="cr-att"   type="number" value="0"></td>
-  <td><input class="cr-in inp-trans" id="cr-trans" type="number" value="0"></td>
-  <td><input class="cr-in" id="cr-m4" type="number" value="0"></td>
-\</tr>\`;
-['cr-m1','cr-m2','cr-m3','cr-m4','cr-new','cr-att','cr-trans'].forEach(id=>{ document.getElementById(id).addEventListener('input',update); });
-function mov(v,cls){ if(v===0) return '<span class="zero">0</span>'; return \`<span class="\${cls}">\${v}</span>\`; }
-function update(){
-  const g=id=>parseInt(document.getElementById(id).value)||0;
-  document.getElementById('tot-m1').textContent=NET.hc[ML[0]]+g('cr-m1');
-  document.getElementById('tot-m2').textContent=NET.hc[ML[1]]+g('cr-m2');
-  document.getElementById('tot-m3').textContent=NET.hc[ML[2]]+g('cr-m3');
-  document.getElementById('tot-m4').textContent=NET.hc[ML[3]]+g('cr-m4');
-  document.getElementById('tot-new').innerHTML=mov(NET.new+g('cr-new'),'col-new-val');
-  document.getElementById('tot-att').innerHTML=mov(NET.att+g('cr-att'),'col-att-val');
-  document.getElementById('tot-trans').innerHTML=mov(NET.trans+g('cr-trans'),'col-trans-val');
+const BU = ${JSON.stringify(BU, null, 2)};
+const GROUPS = ${JSON.stringify(GROUPS, null, 2)};
+const OUT_NAME = ${JSON.stringify(outName)};
+
+function sumMembers(members) {
+  const r = { hc: [0,0,0,0], new: 0, att: 0, trans: 0 };
+  for (const m of members) {
+    const d = BU[m];
+    if (!d) continue;
+    for (let i = 0; i < 4; i++) r.hc[i] += d.hc[i];
+    r.new   += d.new;
+    r.att   += d.att;
+    r.trans += d.trans;
+  }
+  return r;
 }
-function downloadReport(){ const h='<!DOCTYPE html>'+document.documentElement.outerHTML; const a=document.createElement('a'); a.href='data:text/html;charset=utf-8,'+encodeURIComponent(h); a.download='${outName}'; a.click(); }
-async function copyAsImage(){
-  const btn=document.getElementById('btn-copy');
-  btn.textContent='Capturing…'; btn.disabled=true;
-  try{
-    const canvas=await html2canvas(document.getElementById('capture'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
-    canvas.toBlob(async blob=>{
-      try{
-        await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-        btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
-        btn.classList.add('copied');
-        setTimeout(()=>{ btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy as Image'; btn.classList.remove('copied'); btn.disabled=false; },2000);
-      }catch(e){ alert('Could not copy. Try right-clicking the table.'); btn.textContent='Copy as Image'; btn.disabled=false; }
-    },'image/png');
-  }catch(e){ alert('Capture failed: '+e.message); btn.textContent='Copy as Image'; btn.disabled=false; }
+
+function fmt(v, cls) {
+  if (v === 0 || v === null || v === undefined) return `<span class="zero">—</span>`;
+  return `<span class="${cls || ''}">${v > 0 && cls ? '+' + v : v}</span>`;
 }
-<\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-</body></html>`;
+
+function fmtHC(v) {
+  return v === 0 ? `<span class="zero">—</span>` : v;
 }
+
+function makeRow(label, data, rowCls, labelCls) {
+  const [m1, m2, m3, m4] = data.hc;
+  return `<tr class="${rowCls}">
+    <td class="col-label ${labelCls || ''}">${label}</td>
+    <td>${fmtHC(m1)}</td>
+    <td>${fmtHC(m2)}</td>
+    <td>${fmtHC(m3)}</td>
+    <td>${fmt(data.new,   'col-new-val')}</td>
+    <td>${fmt(data.att,   'col-att-val')}</td>
+    <td>${fmt(data.trans, 'col-trans-val')}</td>
+    <td>${fmtHC(m4)}</td>
+  </tr>`;
+}
+
+function spacer() {
+  return `<tr class="spacer"><td colspan="8"></td></tr>`;
+}
+
+function render() {
+  let html = '';
+  const totals = { hc: [0,0,0,0], new: 0, att: 0, trans: 0 };
+
+  for (const grp of GROUPS) {
+    let grpData;
+
+    if (grp.subgroups) {
+      const allMembers = grp.subgroups.flatMap(sg => sg.members);
+      grpData = sumMembers(allMembers);
+
+      for (const sg of grp.subgroups) {
+        const sgData = sumMembers(sg.members);
+        for (const m of sg.members) {
+          html += makeRow(m, BU[m], 'detail');
+        }
+        html += makeRow(sg.label, sgData, sg.cls);
+      }
+    } else {
+      grpData = sumMembers(grp.members);
+      const isLeaf = grp.members.length === 1 && grp.members[0] === grp.label;
+      if (!isLeaf) {
+        for (const m of grp.members) {
+          html += makeRow(m, BU[m], 'detail');
+        }
+      }
+    }
+
+    html += makeRow(grp.label, grpData, grp.cls);
+    html += spacer();
+
+    for (let i = 0; i < 4; i++) totals.hc[i] += grpData.hc[i];
+    totals.new   += grpData.new;
+    totals.att   += grpData.att;
+    totals.trans += grpData.trans;
+  }
+
+  html += makeRow('Total Net FTE Headcount', totals, 'total-net');
+  html += spacer();
+
+  html += `<tr class="total-cr" id="total-cr-row">
+    <td class="col-label">Total Headcount + Costa Rica</td>
+    <td id="tcr-0"></td>
+    <td id="tcr-1"></td>
+    <td id="tcr-2"></td>
+    <td id="tcr-n"></td>
+    <td id="tcr-a"></td>
+    <td id="tcr-t"></td>
+    <td id="tcr-3"></td>
+  </tr>`;
+
+  document.getElementById('main-tbody').innerHTML = html;
+  window._netFTE = totals;
+  updateCR();
+}
+
+function buildCRRow() {
+  const cols = ['cr-0','cr-1','cr-2','cr-n','cr-a','cr-t','cr-3'];
+  let html = `<tr class="cr-edit"><td class="col-label">Costa Rica (editable)</td>`;
+  for (const id of cols) html += `<td><input type="number" id="${id}" value="0" oninput="updateCR()"></td>`;
+  html += `</tr>`;
+  document.getElementById('cr-tbody').innerHTML = html;
+}
+
+function getCRVal(id) {
+  return parseInt(document.getElementById(id)?.value || 0, 10) || 0;
+}
+
+function updateCR() {
+  const net = window._netFTE;
+  if (!net) return;
+  const cr = [getCRVal('cr-0'), getCRVal('cr-1'), getCRVal('cr-2'), getCRVal('cr-3')];
+  const crN = getCRVal('cr-n'), crA = getCRVal('cr-a'), crT = getCRVal('cr-t');
+
+  for (let i = 0; i < 4; i++) {
+    const v = net.hc[i] + cr[i];
+    document.getElementById(`tcr-${i}`).textContent = v || '—';
+  }
+  const tN = net.new + crN;
+  const tA = net.att + crA;
+  const tT = net.trans + crT;
+  document.getElementById('tcr-n').innerHTML = tN ? `<span class="col-new-val">${tN > 0 ? '+' + tN : tN}</span>` : `<span class="zero">—</span>`;
+  document.getElementById('tcr-a').innerHTML = tA ? `<span class="col-att-val">${tA}</span>` : `<span class="zero">—</span>`;
+  document.getElementById('tcr-t').innerHTML = tT ? `<span class="col-trans-val">${tT > 0 ? '+' + tT : tT}</span>` : `<span class="zero">—</span>`;
+}
+
+async function copyAsImage() {
+  const btn = document.getElementById('copyBtn');
+  btn.textContent = 'Copying…';
+  try {
+    const canvas = await html2canvas(document.getElementById('capture'), {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false
+    });
+    canvas.toBlob(async (blob) => {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy as Image'; btn.classList.remove('copied'); }, 2000);
+    }, 'image/png');
+  } catch(e) {
+    btn.textContent = 'Error — try Chrome/Edge';
+    setTimeout(() => { btn.textContent = 'Copy as Image'; }, 3000);
+  }
+}
+
+function downloadReport() {
+  const h = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+  const a = document.createElement('a');
+  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(h);
+  a.download = OUT_NAME;
+  a.click();
+}
+
+buildCRRow();
+render();
+</script>
+</body>
+</html>`;
+}
+
 
 // ── Init ─────────────────────────────────────────────────────
 async function init(){
@@ -3140,18 +3223,22 @@ async function init(){
     showTokenPrompt();
     renderDeadlines();
     dlTimer = setInterval(tickDeadlines, 1000);
-    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000);
-    setTimeout(checkPopups, 3000);
+    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000); // every 2 hours
+    setTimeout(checkPopups, 3000); // first check after 3s
     return;
   }
-
   const gistData = await gistRead();
   if(gistData){
-    saveTools(gistData);
-  } else {
-    loadTools();
+    const customTools = gistData.filter(t => !t.builtin);
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
+    saveTools(merged);
+    gistWrite(merged);
+  } else if(!localStorage.getItem(SK)){
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
   }
-
+  else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
   renderSidebar();
   renderDeadlines();
   processRecurringEvents();
