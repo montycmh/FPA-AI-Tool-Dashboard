@@ -949,7 +949,7 @@ function selectIcon(ic){
 const GIST_ID   = '9dcdea12d05522dfe58b2c62c1114f21';
 const GIST_FILE = 'fpa_tools.json';
 const TOKEN_KEY = 'fpa_gh_token';
-const SK        = 'fpa_tools_v8';
+const SK        = 'fpa_tools_v7';
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY)||''; }
 function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -984,35 +984,17 @@ async function gistWrite(tools){
 }
 
 // ── Storage (Gist + localStorage fallback) ───────────────────
-const BUILTIN_IDS = new Set(DEFAULTS.map(d => d.id));
-const BUILTIN_NAMES = new Set(DEFAULTS.map(d => (d.name || '').trim().toLowerCase()));
-
-function mergeToolsWithDefaults(inputTools){
-  const customOnly = (Array.isArray(inputTools) ? inputTools : [])
-    .filter(t => t && !t.builtin)
-    .filter(t => !BUILTIN_IDS.has(t.id))
-    .filter(t => !BUILTIN_NAMES.has((t.name || '').trim().toLowerCase()));
-  return [...JSON.parse(JSON.stringify(DEFAULTS)), ...customOnly];
-}
-
 function loadTools(){
   try {
     const stored = JSON.parse(localStorage.getItem(SK));
-    if(stored && stored.length){
-      const normalized = mergeToolsWithDefaults(stored);
-      localStorage.setItem(SK, JSON.stringify(normalized));
-      return normalized;
-    }
+    if(stored && stored.length) return stored;
   } catch(e){}
-  const fresh = JSON.parse(JSON.stringify(DEFAULTS));
-  localStorage.setItem(SK, JSON.stringify(fresh));
-  return fresh;
+  return JSON.parse(JSON.stringify(DEFAULTS));
 }
-
 function saveTools(t){
-  const merged = mergeToolsWithDefaults(t);
-  localStorage.setItem(SK, JSON.stringify(merged));
-  const customOnly = merged.filter(x => !x.builtin);
+  localStorage.setItem(SK, JSON.stringify(t));
+  // Only sync custom (non-builtin) tools to Gist — never write builtins
+  const customOnly = t.filter(x => !x.builtin);
   gistWrite(customOnly);
 }
 
@@ -1052,15 +1034,20 @@ async function submitToken(){
   if(!val){ alert('Please enter a token.'); return; }
   setToken(val);
 
+  // Try to load from Gist
   const btn = document.querySelector('#token-overlay button');
-  btn.textContent = 'Loading...';
-  btn.disabled = true;
+  btn.textContent = 'Loading...'; btn.disabled = true;
 
   const gistData = await gistRead();
   if(gistData){
-    saveTools(gistData);
+    const customTools = gistData.filter(t => !t.builtin);
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
+    saveTools(merged);
+    gistWrite(merged);
   } else {
-    loadTools();
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
   }
 
   document.getElementById('token-overlay').remove();
@@ -1068,10 +1055,7 @@ async function submitToken(){
   renderDeadlines();
   requestNotifPermission();
   if(!dlTimer) dlTimer = setInterval(tickDeadlines, 1000);
-  if(!popupTimer){
-    popupTimer = setInterval(checkPopups, 2*60*60*1000);
-    setTimeout(checkPopups,3000);
-  }
+  if(!popupTimer){ popupTimer = setInterval(checkPopups, 2*60*60*1000); setTimeout(checkPopups,3000); }
 }
 
 // ── Download ─────────────────────────────────────────────────
@@ -2905,95 +2889,123 @@ async function hcaGenerateReport(){
 }
 
 function hcaBuildHTML({buData, months, M4, fname}){
-  const ML = months.map(m => m.label);
+  const monthLabels = months.map(m => m.label);
+  const [m1, m2, m3, m4] = monthLabels;
 
-  function zeroData(){
-    return { hc: {[ML[0]]:0,[ML[1]]:0,[ML[2]]:0,[ML[3]]:0}, new:0, att:0, trans:0 };
+  const KNOWN_BUS = [
+    'Analytics Services','BAP Researchers','Comm Strat & Rev Ops','Customer Support',
+    'Data Products','Data Strategy','Engineering','Executive Operations','FAST',
+    'Finance','IT','LT','Lab','Legal','People','Product','Retention','Sales',
+    'Sales Development','Sales Engineering','Tech Solutions','Total Marketing','Total Mavens'
+  ];
+
+  function leaf(name){
+    const d = buData[name] || {hc:{}, new:0, att:0, trans:0};
+    return {
+      hc: monthLabels.map(lbl => d.hc[lbl] || 0),
+      new: d.new || 0,
+      att: d.att || 0,
+      trans: d.trans || 0,
+    };
   }
 
-  function sumGroup(members){
-    const out = zeroData();
-    members.forEach(bu => {
-      const d = buData[bu];
-      if(!d) return;
-      ML.forEach(m => out.hc[m] += d.hc[m] || 0);
-      out.new += d.new || 0;
-      out.att += d.att || 0;
-      out.trans += d.trans || 0;
-    });
-    return out;
+  const BU = {};
+  KNOWN_BUS.forEach(name => { BU[name] = leaf(name); });
+
+  const GROUPS = [
+    { label: 'Total Dev Org', cls: 'subtotal', members: ['Engineering', 'Tech Solutions', 'Lab'] },
+    { label: 'Total Data Product', cls: 'subtotal', members: ['BAP Researchers', 'Data Products', 'Data Strategy', 'Product'] },
+    {
+      label: 'Total Commercial',
+      cls: 'subtotal',
+      subgroups: [
+        {
+          label: 'Total Ops',
+          cls: 'subtotal-light',
+          members: ['LT', 'Comm Strat & Rev Ops', 'Sales Engineering', 'Customer Support', 'Analytics Services', 'FAST', 'Sales Development']
+        },
+        {
+          label: 'Total Sales + Retention',
+          cls: 'subtotal-light',
+          members: ['Retention', 'Sales']
+        }
+      ]
+    },
+    { label: 'Total Mavens', cls: 'subtotal', members: ['Total Mavens'] },
+    { label: 'Total Marketing', cls: 'subtotal', members: ['Total Marketing'] },
+    { label: 'Total G&A', cls: 'subtotal', members: ['Finance', 'People', 'Legal', 'Executive Operations', 'IT'] }
+  ];
+
+  function sumMembers(members){
+    const r = { hc: [0,0,0,0], new: 0, att: 0, trans: 0 };
+    for(const name of members){
+      const d = BU[name];
+      if(!d) continue;
+      for(let i=0;i<4;i++) r.hc[i] += d.hc[i] || 0;
+      r.new += d.new || 0;
+      r.att += d.att || 0;
+      r.trans += d.trans || 0;
+    }
+    return r;
   }
 
-  function leafBU(bu){
-    if(!buData[bu]) return zeroData();
-    const d = buData[bu];
-    return { hc:{...d.hc}, new:d.new||0, att:d.att||0, trans:d.trans||0 };
-  }
-
-  const T = {};
-  ['Engineering','Tech Solutions','Lab','BAP Researchers','Data Products','Data Strategy','Product','LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development','Retention','Sales','Finance','People','Legal','Executive Operations','IT','Total Mavens','Total Marketing'].forEach(k => T[k] = leafBU(k));
-  T['Total Dev Org'] = sumGroup(['Engineering','Tech Solutions','Lab']);
-  T['Total Data Product'] = sumGroup(['BAP Researchers','Data Products','Data Strategy','Product']);
-  T['Total Ops'] = sumGroup(['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development']);
-  T['Total Sales + Retention'] = sumGroup(['Retention','Sales']);
-  T['Total Commercial'] = sumGroup(['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development','Retention','Sales']);
-  T['Total G&A'] = sumGroup(['Finance','People','Legal','Executive Operations','IT']);
-
-  const net = zeroData();
-  ['Total Dev Org','Total Data Product','Total Commercial','Total Mavens','Total Marketing','Total G&A'].forEach(k => {
-    const d = T[k];
-    ML.forEach(m => net.hc[m] += d.hc[m] || 0);
-    net.new += d.new || 0;
-    net.att += d.att || 0;
-    net.trans += d.trans || 0;
-  });
-
-  function fmtMov(v, cls){
-    if(v === 0 || v === null || v === undefined) return '<span class="zero">—</span>';
-    if(cls === 'col-new-val') return `<span class="${cls}">${v > 0 ? '+' + v : v}</span>`;
-    if(cls === 'col-trans-val') return `<span class="${cls}">${v > 0 ? '+' + v : v}</span>`;
-    return `<span class="${cls}">${v}</span>`;
+  function fmt(v, cls){
+    if(v === 0 || v === null || v === undefined) return `<span class="zero">—</span>`;
+    return `<span class="${cls || ''}">${v > 0 && cls ? '+' + v : v}</span>`;
   }
 
   function fmtHC(v){
-    return (v === 0 || v === null || v === undefined) ? '<span class="zero">—</span>' : v;
+    return v === 0 ? `<span class="zero">—</span>` : v;
   }
 
-  function makeRow(label, d, rowCls, labelCls=''){
+  function makeRow(label, data, rowCls){
+    const [a,b,c,d] = data.hc;
     return `<tr class="${rowCls}">
-      <td class="col-label ${labelCls}">${label}</td>
-      <td>${fmtHC(d.hc[ML[0]])}</td>
-      <td>${fmtHC(d.hc[ML[1]])}</td>
-      <td>${fmtHC(d.hc[ML[2]])}</td>
-      <td>${fmtMov(d.new,'col-new-val')}</td>
-      <td>${fmtMov(d.att,'col-att-val')}</td>
-      <td>${fmtMov(d.trans,'col-trans-val')}</td>
-      <td>${fmtHC(d.hc[ML[3]])}</td>
+      <td class="col-label">${label}</td>
+      <td>${fmtHC(a)}</td>
+      <td>${fmtHC(b)}</td>
+      <td>${fmtHC(c)}</td>
+      <td>${fmt(data.new, 'col-new-val')}</td>
+      <td>${fmt(data.att, 'col-att-val')}</td>
+      <td>${fmt(data.trans, 'col-trans-val')}</td>
+      <td>${fmtHC(d)}</td>
     </tr>`;
   }
 
-  const spacer = `<tr class="spacer"><td colspan="8"></td></tr>`;
-  let tbody = '';
-  ['Engineering','Tech Solutions','Lab'].forEach(k => tbody += makeRow(k, T[k], 'detail'));
-  tbody += makeRow('Total Dev Org', T['Total Dev Org'], 'subtotal') + spacer;
+  function spacer(){ return `<tr class="spacer"><td colspan="8"></td></tr>`; }
 
-  ['BAP Researchers','Data Products','Data Strategy','Product'].forEach(k => tbody += makeRow(k, T[k], 'detail'));
-  tbody += makeRow('Total Data Product', T['Total Data Product'], 'subtotal') + spacer;
+  const totals = { hc: [0,0,0,0], new: 0, att: 0, trans: 0 };
+  let html = '';
 
-  ['LT','Comm Strat & Rev Ops','Sales Engineering','Customer Support','Analytics Services','FAST','Sales Development'].forEach(k => tbody += makeRow(k, T[k], 'detail'));
-  tbody += makeRow('Total Ops', T['Total Ops'], 'subtotal-light') + spacer;
+  for(const grp of GROUPS){
+    let grpData;
+    if(grp.subgroups){
+      const allMembers = grp.subgroups.flatMap(sg => sg.members);
+      grpData = sumMembers(allMembers);
+      for(const sg of grp.subgroups){
+        const sgData = sumMembers(sg.members);
+        for(const m of sg.members){ html += makeRow(m, BU[m], 'detail'); }
+        html += makeRow(sg.label, sgData, sg.cls);
+      }
+    } else {
+      grpData = sumMembers(grp.members);
+      const isLeaf = grp.members.length === 1 && grp.members[0] === grp.label;
+      if(!isLeaf){
+        for(const m of grp.members){ html += makeRow(m, BU[m], 'detail'); }
+      }
+    }
 
-  ['Retention','Sales'].forEach(k => tbody += makeRow(k, T[k], 'detail'));
-  tbody += makeRow('Total Sales + Retention', T['Total Sales + Retention'], 'subtotal-light') + spacer;
+    html += makeRow(grp.label, grpData, grp.cls);
+    html += spacer();
+    for(let i=0;i<4;i++) totals.hc[i] += grpData.hc[i];
+    totals.new += grpData.new;
+    totals.att += grpData.att;
+    totals.trans += grpData.trans;
+  }
 
-  tbody += makeRow('Total Commercial', T['Total Commercial'], 'subtotal') + spacer;
-  tbody += makeRow('Total Mavens', T['Total Mavens'], 'subtotal') + spacer;
-  tbody += makeRow('Total Marketing', T['Total Marketing'], 'subtotal') + spacer;
-
-  ['Finance','People','Legal','Executive Operations','IT'].forEach(k => tbody += makeRow(k, T[k], 'detail'));
-  tbody += makeRow('Total G&A', T['Total G&A'], 'subtotal') + spacer;
-  tbody += makeRow('Total Net FTE Headcount', net, 'total-net') + spacer;
-  tbody += `<tr class="total-cr" id="total-cr-row">
+  html += makeRow('Total Net FTE Headcount', totals, 'total-net');
+  html += spacer();
+  html += `<tr class="total-cr" id="total-cr-row">
     <td class="col-label">Total Headcount + Costa Rica</td>
     <td id="tcr-0"></td>
     <td id="tcr-1"></td>
@@ -3004,9 +3016,6 @@ function hcaBuildHTML({buData, months, M4, fname}){
     <td id="tcr-3"></td>
   </tr>`;
 
-  const netJSON = JSON.stringify(net);
-  const outName = `HC_Actuals_${M4.name}${String(M4.yr).slice(2)}.html`;
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3016,16 +3025,10 @@ function hcaBuildHTML({buData, months, M4, fname}){
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #f0f2f5; font-family: Calibri, Arial, sans-serif; font-size: 10px; padding: 20px; }
-  .toolbar { width: 768px; margin: 0 auto 8px auto; display: flex; justify-content: flex-end; gap:8px; }
-  #copyBtn, #downloadBtn {
-    border-radius: 4px; padding: 6px 14px; font-size: 11px; font-family: Calibri, Arial, sans-serif;
-    cursor: pointer; letter-spacing: 0.3px;
-  }
-  #copyBtn { background: #1e3a5f; color: #fff; border: none; }
+  .toolbar { width: 768px; margin: 0 auto 8px auto; display: flex; justify-content: flex-end; }
+  #copyBtn { background: #1e3a5f; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font-size: 11px; font-family: Calibri, Arial, sans-serif; cursor: pointer; letter-spacing: 0.3px; }
   #copyBtn:hover { background: #16304f; }
   #copyBtn.copied { background: #15803d; }
-  #downloadBtn { background:#fff; color:#1e3a5f; border:1px solid #1e3a5f; }
-  #downloadBtn:hover { background:#e6f1fb; }
   .table-wrapper { width: 768px; margin: 0 auto; }
   table { width: 768px; border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 10px; }
   thead th { background: #1e3a5f; color: #fff; font-weight: bold; text-align: center; padding: 4px 5px; font-size: 9.5px; border: 1px solid #16304f; }
@@ -3037,19 +3040,13 @@ function hcaBuildHTML({buData, months, M4, fname}){
   tr.subtotal td.col-label { text-align: left; padding-left: 6px; }
   tr.subtotal-light td { background: #e9eaeb; border: 1px solid #9ca3af; padding: 3px 5px; text-align: center; font-weight: bold; }
   tr.subtotal-light td.col-label { text-align: left; padding-left: 10px; }
-  tr.total-net td, tr.total-cr td {
-    background: #fff; padding: 4px 5px; text-align: center; font-weight: bold;
-    border-top: 2px solid #1e3a5f; border-bottom: 2px solid #1e3a5f; border-left: none; border-right: none;
-  }
+  tr.total-net td, tr.total-cr td { background: #fff; padding: 4px 5px; text-align: center; font-weight: bold; border-top: 2px solid #1e3a5f; border-bottom: 2px solid #1e3a5f; border-left: none; border-right: none; }
   tr.total-net td:first-child, tr.total-cr td:first-child { border-left: 2px solid #1e3a5f; }
   tr.total-net td:last-child, tr.total-cr td:last-child { border-right: 2px solid #1e3a5f; }
   tr.total-net td.col-label, tr.total-cr td.col-label { text-align: left; padding-left: 6px; }
   tr.cr-edit td { background: #f8fafc; border: 1px solid #e5e7eb; padding: 3px 5px; text-align: center; }
   tr.cr-edit td.col-label { text-align: left; padding-left: 14px; font-style: italic; }
-  tr.cr-edit input {
-    width: 36px; text-align: center; border: 1px solid #cbd5e1; border-radius: 2px; padding: 1px 2px;
-    font-size: 10px; font-family: Calibri, Arial, sans-serif; background: #fff;
-  }
+  tr.cr-edit input { width: 36px; text-align: center; border: 1px solid #cbd5e1; border-radius: 2px; padding: 1px 2px; font-size: 10px; font-family: Calibri, Arial, sans-serif; background: #fff; }
   tr.spacer td { background: #f3f4f6; height: 4px; border: none; }
   .col-new-val { color: #15803d; }
   .col-att-val { color: #b91c1c; }
@@ -3059,7 +3056,6 @@ function hcaBuildHTML({buData, months, M4, fname}){
 </head>
 <body>
 <div class="toolbar">
-  <button id="downloadBtn" onclick="downloadReport()">Download HTML</button>
   <button id="copyBtn" onclick="copyAsImage()">Copy as Image</button>
 </div>
 <div class="table-wrapper">
@@ -3067,45 +3063,46 @@ function hcaBuildHTML({buData, months, M4, fname}){
 <thead>
   <tr>
     <th class="col-label">Function</th>
-    <th>${ML[0]}<br>Actual</th>
-    <th>${ML[1]}<br>Actual</th>
-    <th>${ML[2]}<br>Actual</th>
+    <th>${m1}<br>Actual</th>
+    <th>${m2}<br>Actual</th>
+    <th>${m3}<br>Actual</th>
     <th class="col-mov">(+) New</th>
     <th class="col-mov">(-) Attrition</th>
     <th class="col-mov">(+/-) Transfers</th>
-    <th>${ML[3]}<br>Actual</th>
+    <th>${m4}<br>Actual</th>
   </tr>
 </thead>
-<tbody id="main-tbody">${tbody}</tbody>
+<tbody id="main-tbody">${html}</tbody>
 </table>
 </div>
 <div class="table-wrapper">
-<table id="cr-table"><tbody id="cr-tbody"></tbody></table>
+<table id="cr-table">
+<tbody id="cr-tbody"></tbody>
+</table>
 </div>
 <script>
-const NET = ${netJSON};
+const NET_FTE = ${JSON.stringify(totals)};
 function buildCRRow(){
-  const cols = ['cr-0','cr-1','cr-2','cr-n','cr-a','cr-t','cr-3'];
-  let html = '<tr class="cr-edit"><td class="col-label">Costa Rica (editable)</td>';
-  cols.forEach(function(id){ html += '<td><input type="number" id="' + id + '" value="0"></td>'; });
-  html += '</tr>';
-  document.getElementById('cr-tbody').innerHTML = html;
-  cols.forEach(function(id){ document.getElementById(id).addEventListener('input', updateCR); });
+  const ids = ['cr-0','cr-1','cr-2','cr-n','cr-a','cr-t','cr-3'];
+  let row = '<tr class="cr-edit"><td class="col-label">Costa Rica (editable)</td>';
+  ids.forEach(function(id){ row += '<td><input type="number" id="' + id + '" value="0" oninput="updateCR()"></td>'; });
+  row += '</tr>';
+  document.getElementById('cr-tbody').innerHTML = row;
 }
-function getVal(id){ return parseInt((document.getElementById(id) && document.getElementById(id).value) || 0) || 0; }
+function getCRVal(id){ return parseInt(document.getElementById(id)?.value || 0, 10) || 0; }
 function updateCR(){
-  const keys = Object.keys(NET.hc);
-  const cr = [getVal('cr-0'), getVal('cr-1'), getVal('cr-2'), getVal('cr-3')];
+  const cr = [getCRVal('cr-0'), getCRVal('cr-1'), getCRVal('cr-2'), getCRVal('cr-3')];
+  const crN = getCRVal('cr-n'), crA = getCRVal('cr-a'), crT = getCRVal('cr-t');
   for(let i=0;i<4;i++){
-    const v = (NET.hc[keys[i]] || 0) + cr[i];
+    const v = NET_FTE.hc[i] + cr[i];
     document.getElementById('tcr-' + i).innerHTML = v ? String(v) : '<span class="zero">—</span>';
   }
-  const tN = NET.new + getVal('cr-n');
-  const tA = NET.att + getVal('cr-a');
-  const tT = NET.trans + getVal('cr-t');
-  document.getElementById('tcr-n').innerHTML = tN ? '<span class="col-new-val">' + (tN>0?'+':'') + tN + '</span>' : '<span class="zero">—</span>';
-  document.getElementById('tcr-a').innerHTML = tA ? '<span class="col-att-val">' + tA + '</span>' : '<span class="zero">—</span>';
-  document.getElementById('tcr-t').innerHTML = tT ? '<span class="col-trans-val">' + (tT>0?'+':'') + tT + '</span>' : '<span class="zero">—</span>';
+  const tN = NET_FTE.new + crN;
+  document.getElementById('tcr-n').innerHTML = tN ? '<span class="col-new-val">' + (tN > 0 ? '+' + tN : tN) + '</span>' : '<span class="zero">—</span>'; 
+  const tA = NET_FTE.att + crA;
+  document.getElementById('tcr-a').innerHTML = tA ? '<span class="col-att-val">' + tA + '</span>' : '<span class="zero">—</span>'; 
+  const tT = NET_FTE.trans + crT;
+  document.getElementById('tcr-t').innerHTML = tT ? '<span class="col-trans-val">' + (tT > 0 ? '+' + tT : tT) + '</span>' : '<span class="zero">—</span>'; 
 }
 async function copyAsImage() {
   const btn = document.getElementById('copyBtn');
@@ -3123,21 +3120,12 @@ async function copyAsImage() {
     setTimeout(() => { btn.textContent = 'Copy as Image'; }, 3000);
   }
 }
-function downloadReport(){
-  const blob = new Blob([document.documentElement.outerHTML], {type:'text/html'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = ${'`'}${outName}${'`'};
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
 buildCRRow();
 updateCR();
 <\/script>
 </body>
 </html>`;
 }
-
 
 // ── Init ─────────────────────────────────────────────────────
 async function init(){
@@ -3146,18 +3134,22 @@ async function init(){
     showTokenPrompt();
     renderDeadlines();
     dlTimer = setInterval(tickDeadlines, 1000);
-    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000);
-    setTimeout(checkPopups, 3000);
+    popupTimer = setInterval(checkPopups, 2 * 60 * 60 * 1000); // every 2 hours
+    setTimeout(checkPopups, 3000); // first check after 3s
     return;
   }
-
   const gistData = await gistRead();
   if(gistData){
-    saveTools(gistData);
-  } else {
-    loadTools();
+    const customTools = gistData.filter(t => !t.builtin);
+    const builtinIds = new Set(DEFAULTS.map(d => d.id));
+    const dedupedCustom = customTools.filter(t => !builtinIds.has(t.id));
+    const merged = [...JSON.parse(JSON.stringify(DEFAULTS)), ...dedupedCustom];
+    saveTools(merged);
+    gistWrite(merged);
+  } else if(!localStorage.getItem(SK)){
+    saveTools(JSON.parse(JSON.stringify(DEFAULTS)));
   }
-
+  else if(!localStorage.getItem(SK)){ saveTools(JSON.parse(JSON.stringify(DEFAULTS))); }
   renderSidebar();
   renderDeadlines();
   processRecurringEvents();
